@@ -18,6 +18,7 @@ A self-hosted, cloud-synced Typst editor with GitHub integration, auto-save, liv
 - **Project Creation** — Create new GitHub repos with `main.typ` scaffold from within the app
 - **Mobile Responsive** — Three-panel layout adapts to single-panel + tab bar on small screens
 - **Docker Deployment** — Multi-stage Dockerfile with Typst CLI pre-installed
+- **BetterAuth** — Replaced NextAuth v5 with BetterAuth for reliable, race-condition-free OAuth handling
 
 ---
 
@@ -27,7 +28,7 @@ A self-hosted, cloud-synced Typst editor with GitHub integration, auto-save, liv
 
 - Node.js 20+
 - npm
-- [GitHub OAuth App](https://github.com/settings/developers) with callback URL `http(s)://your-domain/api/auth/callback/github` and `repo` scope
+- [GitHub OAuth App](https://github.com/settings/developers) with callback URL `http(s)://your-domain/api/auth/callback/github` (BetterAuth uses the same callback URL) and `repo` scope
 - [Typst CLI](https://github.com/typst/typst/releases) (v0.12+) for local development
 
 ### Local Development / 本地開發
@@ -49,8 +50,7 @@ Edit `.env.local`:
 ```env
 AUTH_GITHUB_ID=your_github_oauth_client_id
 AUTH_GITHUB_SECRET=your_github_oauth_client_secret
-AUTH_SECRET=generate_with_openssl_rand_base64_32
-NEXTAUTH_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000
 ```
 
 ```bash
@@ -83,8 +83,7 @@ Required environment variables:
 |----------|-------------|
 | `AUTH_GITHUB_ID` | GitHub OAuth Client ID |
 | `AUTH_GITHUB_SECRET` | GitHub OAuth Client Secret |
-| `AUTH_SECRET` | NextAuth secret (run `openssl rand -base64 32`) |
-| `NEXTAUTH_URL` | Public URL, e.g. `https://typst.example.com` |
+| `BETTER_AUTH_URL` | Public URL, e.g. `https://typst.example.com` |
 
 The Docker volume `typst-forge-data` persists the user database (`data/db.json`) and font cache (`data/fonts-cache/`).
 
@@ -107,7 +106,7 @@ typst-editor/
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── admin/          # User & settings management
-│   │   │   ├── auth/           # NextAuth route handler
+│   │   │   ├── auth/           # BetterAuth route handler
 │   │   │   ├── commit/         # Commit text + pending uploads to GitHub
 │   │   │   ├── compile/        # Compile .typ → PDF (with font auto-loading)
 │   │   │   ├── files/delete/   # Delete files from GitHub
@@ -128,7 +127,8 @@ typst-editor/
 │   │   ├── LoginButton.tsx     # GitHub OAuth login
 │   │   └── ...
 │   ├── lib/
-│   │   ├── auth.ts             # NextAuth config (GitHub provider + admin check)
+│   │   ├── auth.ts             # BetterAuth config (SQLite + GitHub provider + admin check)
+│   │   ├── auth-client.ts      # BetterAuth browser client
 │   │   ├── db.ts               # JSON file DB for users & settings
 │   │   ├── fonts.ts            # Font collection from GitHub + local uploads with caching
 │   │   ├── github.ts           # Octokit wrapper (file tree, content, commit, blob)
@@ -171,7 +171,7 @@ Save button → POST /api/commit (text + uploads together) → GitHub + cleanup
 ### Auth / 驗證
 
 ```
-GitHub OAuth → NextAuth signIn callback → check DB
+GitHub OAuth → BetterAuth callback → check DB
   ├── First user ever → create as admin → allow
   ├── Existing user → allow
   └── Registration closed → deny → redirect with error
@@ -226,7 +226,7 @@ Place font files (`.ttf`, `.otf`, `.woff`, `.woff2`, `.pfb`, `.pfm`) in your pro
 - **TypeScript**
 - **Tailwind CSS v4**
 - **CodeMirror 6** (custom Typst syntax mode)
-- **NextAuth v5** (GitHub OAuth)
+- **BetterAuth** (GitHub OAuth, SQLite via Kysely)
 - **Zustand** (state management)
 - **Octokit** (GitHub API)
 - **Typst CLI** (compilation)

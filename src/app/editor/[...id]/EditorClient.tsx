@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useCallback, useRef, useState } from "react"
-import { useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import { useRouter } from "next/navigation"
 import { useEditorStore } from "@/store/editor"
 import { getFileTree, getFileContent, getFileBlob } from "@/lib/github"
@@ -49,7 +49,7 @@ function clearDraft() {
 
 function EditorContent({ projectId }: { projectId: string }) {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session } = authClient.useSession()
   const store = useEditorStore()
   const compileTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -76,10 +76,10 @@ function EditorContent({ projectId }: { projectId: string }) {
   }, [projectId])
 
   useEffect(() => {
-    if (!session?.accessToken || !ownerName || !repoName) return
+    if (!(session?.session as { accessToken?: string })?.accessToken || !ownerName || !repoName) return
     ;(async () => {
       try {
-        const tree = await getFileTree(session.accessToken!, ownerName, repoName)
+        const tree = await getFileTree((session!.session as { accessToken?: string }).accessToken!, ownerName, repoName)
         store.setFiles(tree)
 
         const first = findFirstFile(tree, ".typ")
@@ -91,7 +91,7 @@ function EditorContent({ projectId }: { projectId: string }) {
         console.error("Failed to load project:", err)
       }
     })()
-  }, [session?.accessToken, ownerName, repoName, store.refreshTrigger])
+  }, [(session?.session as { accessToken?: string })?.accessToken, ownerName, repoName, store.refreshTrigger])
 
   // File switching — watch currentFilePath
   useEffect(() => {
@@ -172,12 +172,12 @@ function EditorContent({ projectId }: { projectId: string }) {
   }
 
   async function loadFile(path: string) {
-    if (!session?.accessToken || !ownerName || !repoName) return
+    if (!(session?.session as { accessToken?: string })?.accessToken || !ownerName || !repoName) return
     try {
       store.setIsCompiling(false)
       store.setPreviewUrl(null)
       store.setPreviewType("none")
-      const content = await getFileContent(session.accessToken, ownerName, repoName, path)
+      const content = await getFileContent((session!.session as { accessToken?: string }).accessToken!, ownerName, repoName, path)
       const draft = loadDraft(path)
       const restored = draft ? draft.content : null
       const useContent = restored ?? content
@@ -191,10 +191,10 @@ function EditorContent({ projectId }: { projectId: string }) {
   }
 
   async function loadBinaryPreview(path: string) {
-    if (!session?.accessToken || !ownerName || !repoName) return
+    if (!(session?.session as { accessToken?: string })?.accessToken || !ownerName || !repoName) return
     try {
       store.setIsCompiling(false)
-      const blob = await getFileBlob(session.accessToken, ownerName, repoName, path)
+      const blob = await getFileBlob((session!.session as { accessToken?: string }).accessToken!, ownerName, repoName, path)
       const url = URL.createObjectURL(blob)
       store.setPreviewUrl(url)
     } catch (err) {

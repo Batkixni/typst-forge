@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { getUserCount, getSettings } from "@/lib/db"
 import { FileText } from "lucide-react"
@@ -8,7 +8,7 @@ import { GithubIcon } from "@/components/GithubIcon"
 export default async function HomePage(props: {
   searchParams?: Promise<{ error?: string }>
 }) {
-  const session = await auth()
+  const session = await getServerSession()
   const searchParams = await props.searchParams
   const accessDenied = searchParams?.error === "AccessDenied"
 

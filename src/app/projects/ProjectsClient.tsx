@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import type { GitHubRepo } from "@/types"
 import ProjectCard from "@/components/ProjectCard"
 import { Search, RefreshCw, FolderKanban, Shield, Plus, Loader2, X } from "lucide-react"
 import { GithubIcon } from "@/components/GithubIcon"
 
 export default function ProjectsClient() {
-  const { data: session } = useSession()
+  const { data: session } = authClient.useSession()
   const [repos, setRepos] = useState<GitHubRepo[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -20,7 +20,7 @@ export default function ProjectsClient() {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    if (!session?.accessToken) return
+    if (!(session?.session as { accessToken?: string })?.accessToken) return
 
     const fetchRepos = async () => {
       try {
@@ -37,7 +37,7 @@ export default function ProjectsClient() {
     }
 
     fetchRepos()
-  }, [session?.accessToken])
+  }, [(session?.session as { accessToken?: string })?.accessToken])
 
   async function createRepo(e: React.FormEvent) {
     e.preventDefault()
@@ -91,7 +91,7 @@ export default function ProjectsClient() {
             <Plus size={14} />
             New Repo
           </button>
-          {session?.user?.role === "admin" && (
+          {(session?.user as { role?: string })?.role === "admin" && (
             <a href="/admin"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary bg-bg-tertiary border border-border-primary rounded-lg hover:bg-bg-hover hover:text-text-primary transition-colors">
               <Shield size={14} />

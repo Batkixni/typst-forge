@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import { useRouter } from "next/navigation"
 import { Loader2, Shield, Users, ArrowLeft, ToggleLeft, ToggleRight } from "lucide-react"
 
 export default function AdminPage() {
-  const { data: session, status } = useSession()
+  const { data: session, isPending } = authClient.useSession()
   const router = useRouter()
   const [users, setUsers] = useState<any[]>([])
   const [settings, setSettings] = useState<{ allowRegistration: boolean } | null>(null)
@@ -14,11 +14,11 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (status === "loading") return
+    if (isPending) return
     if (!session) { router.push("/"); return }
-    if (session.user.role !== "admin") { router.push("/projects"); return }
+    if ((session.user as { role?: string }).role !== "admin") { router.push("/projects"); return }
     fetchAll()
-  }, [status, session])
+  }, [isPending, session])
 
   async function fetchAll() {
     setLoading(true)

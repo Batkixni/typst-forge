@@ -1,20 +1,20 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import { useRouter } from "next/navigation"
 import { useEffect, type ReactNode } from "react"
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
-  const { status } = useSession()
+  const { data: session, isPending } = authClient.useSession()
   const router = useRouter()
 
   useEffect(() => {
-    if (status === "unauthenticated") {
+    if (!session && !isPending) {
       router.push("/")
     }
-  }, [status, router])
+  }, [session, isPending, router])
 
-  if (status === "loading") {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center h-screen bg-bg-primary">
         <div className="flex flex-col items-center gap-4">
@@ -25,7 +25,7 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     )
   }
 
-  if (status === "unauthenticated") {
+  if (!session) {
     return null
   }
 

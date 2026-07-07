@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import EditorClient from "./EditorClient"
 
@@ -7,7 +7,7 @@ export default async function EditorPage({
 }: {
   params: Promise<{ id: string[] }>
 }) {
-  const session = await auth()
+  const session = await getServerSession()
   if (!session) redirect("/")
 
   const { id } = await params

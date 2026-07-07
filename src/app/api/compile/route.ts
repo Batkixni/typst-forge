@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getServerSession, getAccessToken } from "@/lib/auth"
 import { collectProjectFonts } from "@/lib/fonts"
 import { NextRequest, NextResponse } from "next/server"
 import { execSync } from "child_process"
@@ -8,10 +8,11 @@ import { tmpdir } from "os"
 import { mkdtempSync, mkdirSync } from "fs"
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.accessToken) {
+  const session = await getServerSession()
+  if (!getAccessToken(session?.session)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const accessToken = getAccessToken(session!.session)!
 
   try {
     const { content, owner, repo } = await req.json()
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     // Collect project fonts
     const fontDir = join(tmpDir, "fonts")
     mkdirSync(fontDir)
-    await collectProjectFonts(fontDir, session.accessToken, owner, repo)
+    await collectProjectFonts(fontDir, accessToken, owner, repo)
 
     const fontFlag = `--font-path "${fontDir}"`
 

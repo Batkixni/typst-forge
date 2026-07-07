@@ -1,6 +1,6 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { FileText, Home } from "lucide-react"
@@ -8,7 +8,7 @@ import { GithubIcon } from "@/components/GithubIcon"
 import LoginButton from "./LoginButton"
 
 export default function Navbar() {
-  const { data: session } = useSession()
+  const { data: session } = authClient.useSession()
   const pathname = usePathname()
 
   if (pathname.startsWith("/editor/")) return null

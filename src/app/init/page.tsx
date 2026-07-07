@@ -1,11 +1,11 @@
-import { auth } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { getUserCount } from "@/lib/db"
 import { Rocket } from "lucide-react"
 import LoginButton from "@/components/LoginButton"
 
 export default async function InitPage() {
-  const session = await auth()
+  const session = await getServerSession()
   if (session) redirect("/projects")
 
   const userCount = getUserCount()

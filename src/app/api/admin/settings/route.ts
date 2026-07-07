@@ -1,18 +1,20 @@
-import { auth } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth"
 import { getSettings, setSettings, findUser } from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.role || session.user.role !== "admin") {
+  const session = await getServerSession()
+  const role = (session!.user as { role?: string }).role
+  if (!role || role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   return NextResponse.json(getSettings())
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.role || session.user.role !== "admin") {
+  const session = await getServerSession()
+  const role = (session!.user as { role?: string }).role
+  if (!role || role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   try {

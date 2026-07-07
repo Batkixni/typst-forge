@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getServerSession, getAccessToken } from "@/lib/auth"
 import { commitFile, commitBinaryFile } from "@/lib/github"
 import { NextRequest, NextResponse } from "next/server"
 import { readFile, unlink, rmdir } from "fs/promises"
@@ -8,10 +8,11 @@ import { join } from "path"
 const UPLOAD_DIR = join(process.cwd(), "data", "uploads")
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.accessToken) {
+  const session = await getServerSession()
+  if (!getAccessToken(session?.session)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const accessToken = getAccessToken(session!.session)!
 
   try {
     const { path, content, owner, repo, message, uploads } = await req.json()
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
     // Commit text file
     if (path && content !== undefined && owner && repo) {
       await commitFile(
-        session.accessToken,
+        accessToken,
         owner,
         repo,
         path,
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
         const buf = await readFile(src)
         const b64 = buf.toString("base64")
         await commitBinaryFile(
-          session.accessToken,
+          accessToken,
           owner,
           repo,
           uploadPath,

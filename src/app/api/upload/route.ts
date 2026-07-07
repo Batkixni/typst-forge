@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getServerSession, getAccessToken } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import { writeFile, mkdir } from "fs/promises"
 import { existsSync } from "fs"
@@ -7,8 +7,8 @@ import { join } from "path"
 const UPLOAD_DIR = join(process.cwd(), "data", "uploads")
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.accessToken) {
+  const session = await getServerSession()
+  if (!getAccessToken(session?.session)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

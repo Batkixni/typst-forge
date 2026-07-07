@@ -1,11 +1,11 @@
 "use client"
 
-import { signIn, signOut, useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import { LogOut, ChevronDown, User } from "lucide-react"
 import { GithubIcon } from "@/components/GithubIcon"
 
 export default function LoginButton({ label }: { label?: string }) {
-  const { data: session } = useSession()
+  const { data: session } = authClient.useSession()
 
   if (session) {
     return (
@@ -32,7 +32,7 @@ export default function LoginButton({ label }: { label?: string }) {
             Signed in as <span className="text-text-secondary">{session.user?.name}</span>
           </div>
           <button
-            onClick={() => signOut()}
+            onClick={() => authClient.signOut()}
             className="flex items-center gap-2 w-full px-3 py-2 text-sm text-text-secondary hover:text-red-400 hover:bg-bg-hover transition-colors"
           >
             <LogOut size={14} />
@@ -45,7 +45,7 @@ export default function LoginButton({ label }: { label?: string }) {
 
   return (
     <button
-      onClick={() => signIn("github")}
+      onClick={() => authClient.signIn.social({ provider: "github" })}
       className="flex items-center gap-2 px-4 py-2 bg-accent text-black rounded-lg text-sm font-medium hover:bg-accent-hover transition-all duration-200 shadow-lg shadow-accent/10"
     >
       <GithubIcon size={16} />

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react"
 import { useEditorStore } from "@/store/editor"
-import { useSession } from "next-auth/react"
+import { authClient } from "@/lib/auth-client"
 import {
   ChevronRight,
   File,
@@ -109,7 +109,7 @@ function TreeNode({ node, depth = 0, onNewFile, onNewFolder, onDelete }: {
 
 export default function FileTree() {
   const { files, isLoading, owner, repo, pendingUploads, addPendingUpload } = useEditorStore()
-  const { data: session } = useSession()
+  const { data: session } = authClient.useSession()
   const refreshFiles = useEditorStore.getState().refreshFiles
   const [creating, setCreating] = useState<{ parentPath: string; type: "file" | "dir" } | null>(null)
   const [name, setName] = useState("")
@@ -119,7 +119,7 @@ export default function FileTree() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !session?.accessToken || !owner || !repo || !creating) return
+    if (!name.trim() || !(session?.session as { accessToken?: string })?.accessToken || !owner || !repo || !creating) return
     setSaving(true)
     try {
       const filePath = creating.parentPath ? `${creating.parentPath}/${name.trim()}` : name.trim()
@@ -148,7 +148,7 @@ export default function FileTree() {
   }
 
   async function handleDelete(node: ProjectFile) {
-    if (!session?.accessToken || !owner || !repo) return
+    if (!(session?.session as { accessToken?: string })?.accessToken || !owner || !repo) return
     const ok = confirm(`Delete ${node.type === "dir" ? "directory" : "file"} "${node.name}"?`)
     if (!ok) return
 
@@ -198,7 +198,7 @@ export default function FileTree() {
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
-    if (!files?.length || !session?.accessToken || !owner || !repo) return
+    if (!files?.length || !(session?.session as { accessToken?: string })?.accessToken || !owner || !repo) return
     setUploading(true)
     try {
       for (const file of files) {

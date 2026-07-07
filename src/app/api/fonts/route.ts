@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth"
+import { getServerSession, getAccessToken } from "@/lib/auth"
 import { collectProjectFonts } from "@/lib/fonts"
 import { NextRequest, NextResponse } from "next/server"
 import { execSync } from "child_process"
@@ -7,10 +7,11 @@ import { join } from "path"
 import { tmpdir } from "os"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.accessToken) {
+  const session = await getServerSession()
+  if (!getAccessToken(session?.session)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const accessToken = getAccessToken(session!.session)!
 
   const { searchParams } = new URL(req.url)
   const owner = searchParams.get("owner")
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     const tmpDir = mkdtempSync(join(tmpdir(), "typst-fonts-"))
     const fontDir = join(tmpDir, "fonts")
     mkdirSync(fontDir)
-    await collectProjectFonts(fontDir, session.accessToken, owner || undefined, repo || undefined)
+    await collectProjectFonts(fontDir, accessToken, owner || undefined, repo || undefined)
 
     const output = execSync(`typst fonts --font-path "${fontDir}"`, {
       timeout: 10000,

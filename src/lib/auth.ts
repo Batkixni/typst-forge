@@ -1,56 +1,106 @@
-import NextAuth from "next-auth"
-import GitHub from "next-auth/providers/github"
-import { findOrCreateUser, findUser, deduplicateUsers, ensureAdminExists } from "./db"
+import { betterAuth } from "better-auth"
+import { kyselyAdapter } from "@better-auth/kysely-adapter"
+import Database from "better-sqlite3"
+import { Kysely, SqliteDialect } from "kysely"
+import { join } from "path"
+import { existsSync, mkdirSync } from "fs"
+import { headers } from "next/headers"
+import { deduplicateUsers, ensureAdminExists, findOrCreateUser } from "./db"
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  trustHost: true,
-  providers: [
-    GitHub({
-      clientId: process.env.AUTH_GITHUB_ID!,
-      clientSecret: process.env.AUTH_GITHUB_SECRET!,
-      authorization: {
-        params: { scope: "read:user user:email repo" },
-      },
-    }),
-  ],
-  callbacks: {
-    async signIn({ user }) {
-      try {
-        if (user?.id) {
-          deduplicateUsers()
-          findOrCreateUser(user.id, user.name || "Unknown", user.image || null)
-          ensureAdminExists()
-        }
-      } catch {}
-      return true
-    },
-    async jwt({ token, account, user }) {
-      try {
-        if (account?.access_token) token.accessToken = account.access_token
-        if (user?.id) {
-          const existing = findUser(user.id)
-          if (existing) token.role = existing.role
-        }
-      } catch {}
-      return token
-    },
-    async session({ session, token }) {
-      try {
-        session.accessToken = token.accessToken as string
-        session.user.role = token.role as string | undefined
-      } catch {}
-      return session
-    },
-  },
-  pages: { signIn: "/", error: "/?error=AccessDenied" },
+const dataDir = join(process.cwd(), "data")
+if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
+
+const dbPath = join(dataDir, "better-auth.db")
+
+const kyselyDb = new Kysely<any>({
+  dialect: new SqliteDialect({
+    database: new Database(dbPath),
+  }),
 })
 
-declare module "next-auth" {
-  interface Session {
-    accessToken?: string
-    user: { role?: string; name?: string | null; email?: string | null; image?: string | null }
-  }
+export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL || "http://localhost:3000",
+  database: kyselyAdapter(kyselyDb),
+  socialProviders: {
+    github: {
+      clientId: process.env.AUTH_GITHUB_ID!,
+      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+      scope: ["read:user", "user:email", "repo"],
+    },
+  },
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        required: true,
+        defaultValue: "user",
+      },
+      githubId: {
+        type: "string",
+        required: true,
+      },
+    },
+  },
+  session: {
+    additionalFields: {
+      accessToken: {
+        type: "string",
+        required: false,
+      },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session, context) => {
+          if (context) {
+            const accounts = await context.context.adapter.findMany({
+              model: "account",
+              where: [
+                { field: "userId", operator: "eq", value: session.userId },
+                { field: "providerId", operator: "eq", value: "github" },
+              ],
+            })
+            if (accounts && accounts.length > 0) {
+              const account = accounts[0] as Record<string, unknown>
+              if (account.accessToken) {
+                return {
+                  data: {
+                    ...session,
+                    accessToken: account.accessToken as string,
+                  },
+                }
+              }
+            }
+          }
+        },
+      },
+    },
+    user: {
+      create: {
+        after: async (user, _ctx) => {
+          deduplicateUsers()
+          const ghId = (user as Record<string, unknown>).githubId as string
+          findOrCreateUser(ghId, user.name || "Unknown", user.image || null)
+          ensureAdminExists()
+        },
+      },
+    },
+  },
+})
+
+export async function getServerSession() {
+  const h = await headers()
+  return auth.api.getSession({
+    headers: h,
+  })
 }
-declare module "@auth/core/jwt" {
-  interface JWT { accessToken?: string; role?: string }
+
+export function getRole(user: { role?: string } | null | undefined): string {
+  return user?.role ?? "user"
 }
+
+export function getAccessToken(session: { accessToken?: string | null } | null | undefined): string | null | undefined {
+  return session?.accessToken
+}
+
