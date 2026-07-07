@@ -60,6 +60,7 @@ function EditorContent({ projectId }: { projectId: string }) {
   const [showFonts, setShowFonts] = useState(false)
   const [fontList, setFontList] = useState<{ family: string; styles: string }[]>([])
   const [loadingFonts, setLoadingFonts] = useState(false)
+  const [fontError, setFontError] = useState("")
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -228,12 +229,14 @@ function EditorContent({ projectId }: { projectId: string }) {
     if (!state.owner || !state.repo) return
     setLoadingFonts(true)
     setShowFonts(true)
+    setFontError("")
     try {
       const res = await fetch(`/api/fonts?owner=${state.owner}&repo=${state.repo}`)
-      if (!res.ok) { const err = await res.json(); console.error(err.error); return }
+      if (!res.ok) { const err = await res.json(); setFontError(err.error || "Failed to list fonts"); return }
       const data = await res.json()
       setFontList(data.fonts || [])
     } catch (err) {
+      setFontError("Network error listing fonts")
       console.error("Failed to list fonts:", err)
     } finally {
       setLoadingFonts(false)
@@ -344,6 +347,13 @@ function EditorContent({ projectId }: { projectId: string }) {
               Fonts
             </button>
           )}
+          {isTypst && (
+            <button onClick={doCompile} disabled={store.isCompiling}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-black rounded-md hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+              {store.isCompiling ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+              Compile
+            </button>
+          )}
         </div>
       </header>
 
@@ -359,6 +369,8 @@ function EditorContent({ projectId }: { projectId: string }) {
             <div className="overflow-y-auto max-h-56">
               {loadingFonts ? (
                 <div className="flex items-center justify-center py-6"><Loader2 size={16} className="animate-spin text-accent" /></div>
+              ) : fontError ? (
+                <p className="text-xs text-red-400 text-center py-4 px-3 break-words">{fontError}</p>
               ) : fontList.length === 0 ? (
                 <p className="text-xs text-text-tertiary text-center py-6">No fonts found in this project.</p>
               ) : (
