@@ -302,8 +302,11 @@ function EditorContent({ projectId }: { projectId: string }) {
           {store.isCompiling && <span className="flex items-center gap-1 text-[10px] text-text-tertiary"><Loader2 size={10} className="animate-spin" />Compiling…</span>}
         </div>
         {compileError && (
-          <div className="bg-red-500/10 border-b border-red-500/20 px-3 py-2 max-h-48 overflow-y-auto shrink-0">
-            <pre className="text-[11px] text-red-300 leading-relaxed whitespace-pre-wrap break-all">{compileError}</pre>
+          <div className="bg-red-500/10 border-b border-red-500/20 px-3 py-2 max-h-48 overflow-y-auto shrink-0 flex items-start gap-2">
+            <pre className="flex-1 text-[11px] text-red-300 leading-relaxed whitespace-pre-wrap break-all">{compileError}</pre>
+            <button onClick={() => setCompileError("")} className="p-0.5 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-colors shrink-0 mt-0.5">
+              <X size={12} />
+            </button>
           </div>
         )}
         <div className="flex-1 overflow-hidden"><PreviewPanel /></div>
