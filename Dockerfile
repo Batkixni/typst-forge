@@ -1,11 +1,12 @@
-FROM node:20-alpine AS builder
+FROM node:22-slim AS builder
 
-RUN apk add --no-cache wget tar xz
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates xz-utils \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz \
+RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-gnu.tar.xz \
   | tar -xJ -C /tmp && \
-  mv /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst && \
-  rm -rf /tmp/typst-x86_64-unknown-linux-musl
+  mv /tmp/typst-x86_64-unknown-linux-gnu/typst /usr/local/bin/typst && \
+  rm -rf /tmp/typst-x86_64-unknown-linux-gnu
 
 WORKDIR /app
 COPY package*.json ./
@@ -13,14 +14,15 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:22-slim AS runner
 
-RUN apk add --no-cache wget tar xz
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates xz-utils \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz \
+RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-gnu.tar.xz \
   | tar -xJ -C /tmp && \
-  mv /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst && \
-  rm -rf /tmp/typst-x86_64-unknown-linux-musl
+  mv /tmp/typst-x86_64-unknown-linux-gnu/typst /usr/local/bin/typst && \
+  rm -rf /tmp/typst-x86_64-unknown-linux-gnu
 
 WORKDIR /app
 ENV NODE_ENV=production
