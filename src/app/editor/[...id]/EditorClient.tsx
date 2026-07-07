@@ -123,25 +123,39 @@ function EditorContent({ projectId }: { projectId: string }) {
 
   async function doSave() {
     const state = useEditorStore.getState()
-    if (!state.currentFilePath || !state.owner || !state.repo || state.currentContent === state.originalContent) return
+    if (!state.owner || !state.repo) return
+    const textChanged = state.currentFilePath && state.currentContent !== state.originalContent
+    const hasUploads = state.pendingUploads.length > 0
+    if (!textChanged && !hasUploads) return
     const version = ++savingVersionRef.current
     store.setIsSaving(true)
     try {
+      const body: Record<string, any> = {
+        owner: state.owner,
+        repo: state.repo,
+      }
+      if (textChanged) {
+        body.path = state.currentFilePath
+        body.content = state.currentContent
+        body.message = `Update ${state.currentFilePath}`
+      }
+      if (hasUploads) {
+        body.uploads = state.pendingUploads.map((u) => u.path)
+        body.message = body.message || `Add ${state.pendingUploads.length} file(s)`
+      }
       const res = await fetch("/api/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: state.currentFilePath,
-          content: state.currentContent,
-          owner: state.owner,
-          repo: state.repo,
-          message: `Update ${state.currentFilePath}`,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) { const err = await res.json(); console.error("Save error:", err.error); return }
       if (version === savingVersionRef.current) {
-        store.setOriginalContent(state.currentContent)
-        clearDraft()
+        if (textChanged) {
+          store.setOriginalContent(state.currentContent)
+          clearDraft()
+        }
+        store.clearPendingUploads()
+        store.refreshFiles()
       }
     } catch (err) {
       console.error("Save failed:", err)
@@ -287,16 +301,18 @@ function EditorContent({ projectId }: { projectId: string }) {
           <span className="flex items-center gap-1.5 text-xs text-text-tertiary whitespace-nowrap">
             {store.isSaving ? (
               <><Loader2 size={11} className="animate-spin" />Saving…</>
+            ) : store.pendingUploads.length > 0 ? (
+              <><span className="w-1.5 h-1.5 rounded-full bg-accent" />{store.pendingUploads.length} file{store.pendingUploads.length > 1 ? "s" : ""} pending</>
             ) : store.currentContent !== store.originalContent ? (
               <><span className="w-1.5 h-1.5 rounded-full bg-accent" />Unsaved</>
             ) : (
               <><Check size={11} className="text-text-tertiary/60" />Saved</>
             )}
           </span>
-          {store.currentContent !== store.originalContent && (
+          {(store.currentContent !== store.originalContent || store.pendingUploads.length > 0) && (
             <button onClick={doSave}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-bg-elevated text-text-primary rounded-md hover:bg-bg-hover border border-border-secondary transition-all">
-              Save
+              Save{store.pendingUploads.length > 0 ? ` (${store.pendingUploads.length} file${store.pendingUploads.length > 1 ? "s" : ""})` : ""}
             </button>
           )}
           {isTypst && (

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useEditorStore } from "@/store/editor"
 import { useSession } from "next-auth/react"
 import {
@@ -15,6 +15,7 @@ import {
   Loader2,
   X,
   Check,
+  Upload,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectFile } from "@/types"
@@ -107,12 +108,14 @@ function TreeNode({ node, depth = 0, onNewFile, onNewFolder, onDelete }: {
 }
 
 export default function FileTree() {
-  const { files, isLoading, owner, repo } = useEditorStore()
+  const { files, isLoading, owner, repo, pendingUploads, addPendingUpload } = useEditorStore()
   const { data: session } = useSession()
   const refreshFiles = useEditorStore.getState().refreshFiles
   const [creating, setCreating] = useState<{ parentPath: string; type: "file" | "dir" } | null>(null)
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -193,10 +196,40 @@ export default function FileTree() {
 
   const rootActions = [{ label: "New file", type: "file" as const }, { label: "New folder", type: "dir" as const }]
 
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files?.length || !session?.accessToken || !owner || !repo) return
+    setUploading(true)
+    try {
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("owner", owner)
+        formData.append("repo", repo)
+        formData.append("path", file.name)
+        const res = await fetch("/api/upload", { method: "POST", body: formData })
+        if (!res.ok) { const err = await res.json(); console.error("Upload error:", err.error); continue }
+        addPendingUpload({ path: file.name, name: file.name })
+      }
+      refreshFiles()
+    } catch (err) {
+      console.error("Upload failed:", err)
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
   return (
     <div className="py-2">
       <div className="flex items-center justify-end px-3 pb-1">
         <div className="flex items-center gap-0.5">
+          <input ref={fileInputRef} type="file" multiple onChange={handleUpload} className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-hover rounded transition-colors">
+            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            Upload
+          </button>
           {rootActions.map((a) => (
             <button key={a.type} onClick={() => { setCreating({ parentPath: "", type: a.type }); setName("") }}
               className="flex items-center gap-1 px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-hover rounded transition-colors">
@@ -229,16 +262,30 @@ export default function FileTree() {
         </form>
       )}
 
-      {files.length === 0 ? (
+      {files.length === 0 && pendingUploads.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-text-tertiary p-4 text-center mt-8">
           <Folder size={24} className="mb-2 opacity-40" />
           <p className="text-xs">No files</p>
         </div>
       ) : (
-        files.map((file) => (
-          <TreeNode key={file.path} node={file} onNewFile={(p) => setCreating({ parentPath: p, type: "file" })}
-            onNewFolder={(p) => setCreating({ parentPath: p, type: "dir" })} onDelete={handleDelete} />
-        ))
+        <>
+          {files.map((file) => (
+            <TreeNode key={file.path} node={file} onNewFile={(p) => setCreating({ parentPath: p, type: "file" })}
+              onNewFolder={(p) => setCreating({ parentPath: p, type: "dir" })} onDelete={handleDelete} />
+          ))}
+          {pendingUploads.length > 0 && (
+            <div className="mt-2 border-t border-border-secondary pt-2">
+              <div className="px-3 pb-1 text-[10px] uppercase tracking-wider text-accent font-medium">Pending uploads</div>
+              {pendingUploads.map((u) => (
+                <div key={u.path} className="flex items-center gap-2 px-3 py-1 text-sm text-text-secondary"
+                  style={{ paddingLeft: "24px" }}>
+                  <Upload size={12} className="text-accent shrink-0" />
+                  <span className="truncate">{u.path}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -5,6 +5,11 @@ import type { ProjectFile } from "@/types"
 
 export type PreviewType = "typst" | "pdf" | "image" | "none"
 
+interface PendingUpload {
+  path: string
+  name: string
+}
+
 interface EditorStore {
   projectId: string | null
   owner: string
@@ -21,6 +26,7 @@ interface EditorStore {
   isSaving: boolean
   refreshTrigger: number
   expandedPaths: Set<string>
+  pendingUploads: PendingUpload[]
 
   setProjectMeta: (meta: { projectId: string; owner: string; repo: string; branch: string }) => void
   setFiles: (files: ProjectFile[]) => void
@@ -34,6 +40,8 @@ interface EditorStore {
   setIsSaving: (v: boolean) => void
   refreshFiles: () => void
   toggleExpanded: (path: string) => void
+  addPendingUpload: (upload: PendingUpload) => void
+  clearPendingUploads: () => void
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
@@ -52,6 +60,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   isSaving: false,
   refreshTrigger: 0,
   expandedPaths: new Set<string>(),
+  pendingUploads: [],
 
   setProjectMeta: (meta) => set({ projectId: meta.projectId, owner: meta.owner, repo: meta.repo, branch: meta.branch }),
   setFiles: (files) => set({ files, isLoading: false }),
@@ -64,7 +73,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setIsLoading: (v) => set({ isLoading: v }),
   setIsSaving: (v) => set({ isSaving: v }),
   refreshFiles: () => set((s) => ({ refreshTrigger: s.refreshTrigger + 1 })),
-
   toggleExpanded: (path) =>
     set((state) => {
       const next = new Set(state.expandedPaths)
@@ -72,5 +80,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       else next.add(path)
       return { expandedPaths: next }
     }),
-
+  addPendingUpload: (upload) => set((s) => ({ pendingUploads: [...s.pendingUploads, upload] })),
+  clearPendingUploads: () => set({ pendingUploads: [] }),
 }))

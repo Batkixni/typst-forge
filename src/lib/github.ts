@@ -159,6 +159,28 @@ export async function commitFile(
   })
 }
 
+export async function commitBinaryFile(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  path: string,
+  base64Content: string,
+  message: string
+): Promise<void> {
+  const octokit = getOctokit(accessToken)
+  const { data } = await octokit.repos.getContent({ owner, repo, path }).catch(() => ({ data: null as any }))
+  const sha = data?.sha
+
+  await octokit.repos.createOrUpdateFileContents({
+    owner,
+    repo,
+    path,
+    message,
+    content: base64Content,
+    sha,
+  })
+}
+
 export async function deleteFile(
   accessToken: string,
   owner: string,
