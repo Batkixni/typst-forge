@@ -200,11 +200,11 @@ function EditorContent({ projectId }: { projectId: string }) {
     if (!state.currentFilePath?.endsWith(".typ")) return
     state.setIsCompiling(true)
     try {
-      const content = useEditorStore.getState().currentContent
+      const { currentContent, owner, repo } = useEditorStore.getState()
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: currentContent, owner, repo }),
       })
       if (!res.ok) { const err = await res.json(); console.error("Compile error:", err.error); return }
       const blob = await res.blob()
