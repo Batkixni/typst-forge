@@ -61,6 +61,7 @@ function EditorContent({ projectId }: { projectId: string }) {
   const [fontList, setFontList] = useState<{ family: string; styles: string }[]>([])
   const [loadingFonts, setLoadingFonts] = useState(false)
   const [fontError, setFontError] = useState("")
+  const [compileError, setCompileError] = useState("")
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -205,6 +206,7 @@ function EditorContent({ projectId }: { projectId: string }) {
     const state = useEditorStore.getState()
     if (!state.currentFilePath?.endsWith(".typ")) return
     state.setIsCompiling(true)
+    setCompileError("")
     try {
       const { currentContent, owner, repo } = useEditorStore.getState()
       const res = await fetch("/api/compile", {
@@ -212,12 +214,13 @@ function EditorContent({ projectId }: { projectId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: currentContent, owner, repo }),
       })
-      if (!res.ok) { const err = await res.json(); console.error("Compile error:", err.error); return }
+      if (!res.ok) { const err = await res.json(); setCompileError(err.error || "Compile failed"); return }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       useEditorStore.getState().setPreviewUrl(url)
       useEditorStore.getState().setPreviewType("typst")
     } catch (err) {
+      setCompileError("Compile request failed")
       console.error("Compile failed:", err)
     } finally {
       useEditorStore.getState().setIsCompiling(false)
@@ -298,6 +301,11 @@ function EditorContent({ projectId }: { projectId: string }) {
           </div>
           {store.isCompiling && <span className="flex items-center gap-1 text-[10px] text-text-tertiary"><Loader2 size={10} className="animate-spin" />Compiling…</span>}
         </div>
+        {compileError && (
+          <div className="bg-red-500/10 border-b border-red-500/20 px-3 py-2 max-h-48 overflow-y-auto shrink-0">
+            <pre className="text-[11px] text-red-300 leading-relaxed whitespace-pre-wrap break-all">{compileError}</pre>
+          </div>
+        )}
         <div className="flex-1 overflow-hidden"><PreviewPanel /></div>
       </div>
     )
