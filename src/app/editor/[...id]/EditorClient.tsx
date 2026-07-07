@@ -21,6 +21,8 @@ import {
   Check,
   File,
   PanelLeft,
+  Type,
+  X,
 } from "lucide-react"
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"])
@@ -55,6 +57,9 @@ function EditorContent({ projectId }: { projectId: string }) {
   const [ownerName, repoName] = projectId.split("/")
   const [mobilePanel, setMobilePanel] = useState<"files" | "editor" | "preview">("editor")
   const [isMobile, setIsMobile] = useState(false)
+  const [showFonts, setShowFonts] = useState(false)
+  const [fontList, setFontList] = useState<{ family: string; styles: string }[]>([])
+  const [loadingFonts, setLoadingFonts] = useState(false)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -218,6 +223,23 @@ function EditorContent({ projectId }: { projectId: string }) {
     }
   }, [])
 
+  async function fetchFonts() {
+    const state = useEditorStore.getState()
+    if (!state.owner || !state.repo) return
+    setLoadingFonts(true)
+    setShowFonts(true)
+    try {
+      const res = await fetch(`/api/fonts?owner=${state.owner}&repo=${state.repo}`)
+      if (!res.ok) { const err = await res.json(); console.error(err.error); return }
+      const data = await res.json()
+      setFontList(data.fonts || [])
+    } catch (err) {
+      console.error("Failed to list fonts:", err)
+    } finally {
+      setLoadingFonts(false)
+    }
+  }
+
   const ext = store.currentFilePath?.split(".").pop()?.toLowerCase() || ""
   const isTypst = store.currentFilePath?.endsWith(".typ")
   const isTextFile = !BINARY_EXT.has(ext)
@@ -316,14 +338,51 @@ function EditorContent({ projectId }: { projectId: string }) {
             </button>
           )}
           {isTypst && (
-            <button onClick={doCompile} disabled={store.isCompiling}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-black rounded-md hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-              {store.isCompiling ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-              Compile
+            <button onClick={fetchFonts}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-border-secondary rounded-md transition-all">
+              <Type size={13} />
+              Fonts
             </button>
           )}
         </div>
       </header>
+
+      {showFonts && (
+        <div className="relative z-50">
+          <div className="absolute right-4 top-0 w-80 max-h-72 bg-bg-elevated border border-border-primary rounded-lg shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border-secondary">
+              <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">Available Fonts</span>
+              <button onClick={() => setShowFonts(false)} className="p-0.5 rounded text-text-tertiary hover:text-text-primary transition-colors">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-56">
+              {loadingFonts ? (
+                <div className="flex items-center justify-center py-6"><Loader2 size={16} className="animate-spin text-accent" /></div>
+              ) : fontList.length === 0 ? (
+                <p className="text-xs text-text-tertiary text-center py-6">No fonts found in this project.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-text-tertiary border-b border-border-secondary">
+                      <th className="text-left px-3 py-1.5 font-medium">Family</th>
+                      <th className="text-left px-3 py-1.5 font-medium">Styles</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fontList.map((f, i) => (
+                      <tr key={i} className="border-b border-border-secondary/50 last:border-0">
+                        <td className="px-3 py-1.5 text-text-primary font-mono">{f.family}</td>
+                        <td className="px-3 py-1.5 text-text-tertiary">{f.styles || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden">
         {/* Desktop: side-by-side panels */}
