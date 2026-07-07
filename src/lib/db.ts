@@ -97,3 +97,12 @@ export function listUsers(): User[] {
 export function getUserCount(): number {
   return readDb().users.length
 }
+
+export function ensureAdminExists(): void {
+  const db = readDb()
+  const hasAdmin = db.users.some((u) => u.role === "admin")
+  if (!hasAdmin && db.users.length > 0) {
+    db.users[0].role = "admin"
+    writeDb(db)
+  }
+}

@@ -1,6 +1,6 @@
 import NextAuth from "next-auth"
 import GitHub from "next-auth/providers/github"
-import { findOrCreateUser, findUser, deduplicateUsers } from "./db"
+import { findOrCreateUser, findUser, deduplicateUsers, ensureAdminExists } from "./db"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
@@ -19,6 +19,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (user?.id) {
           deduplicateUsers()
           findOrCreateUser(user.id, user.name || "Unknown", user.image || null)
+          ensureAdminExists()
         }
       } catch {}
       return true
