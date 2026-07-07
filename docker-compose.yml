@@ -1,0 +1,16 @@
+services:
+  typst-forge:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET}
+      AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${AUTH_SECRET}
+    volumes:
+      - typst-forge-data:/app/data
+
+volumes:
+  typst-forge-data:

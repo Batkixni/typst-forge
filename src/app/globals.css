@@ -1,0 +1,147 @@
+@import "tailwindcss";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource/jetbrains-mono/700.css";
+@import "@fontsource/jetbrains-mono/400-italic.css";
+
+@theme inline {
+  --color-bg-primary: #0c0c10;
+  --color-bg-secondary: #121216;
+  --color-bg-tertiary: #18181e;
+  --color-bg-elevated: #1e1e26;
+  --color-bg-hover: #25252e;
+  --color-bg-active: #2a2a34;
+  --color-border-primary: #2a2a34;
+  --color-border-secondary: #1e1e26;
+  --color-border-accent: #d4a04a40;
+  --color-text-primary: #e4e4ea;
+  --color-text-secondary: #94949e;
+  --color-text-tertiary: #5c5c66;
+  --color-accent: #d4a04a;
+  --color-accent-hover: #e8b85e;
+  --color-accent-dim: #8a6a2a;
+  --color-accent-glow: #d4a04a20;
+  --color-surface-raised: #1a1a22;
+  --color-surface-overlay: rgba(0, 0, 0, 0.6);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a34;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a44;
+}
+
+/* Selection */
+::selection {
+  background: #d4a04a40;
+  color: #e4e4ea;
+}
+
+/* Typst editor syntax highlight theme */
+.cm-editor {
+  height: 100%;
+  font-size: 13.5px;
+  line-height: 1.6;
+  background: var(--color-bg-primary);
+}
+.cm-editor .cm-content {
+  font-family: "JetBrains Mono", monospace;
+  padding: 0.75rem 0;
+}
+.cm-editor .cm-line {
+  padding: 0 1rem;
+}
+.cm-editor .cm-gutters {
+  background: var(--color-bg-primary);
+  border-right: 1px solid var(--color-border-secondary);
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  padding: 0.75rem 0;
+}
+.cm-editor .cm-gutterElement {
+  padding: 0 1rem;
+}
+.cm-editor .cm-activeLineGutter {
+  background: #d4a04a10;
+}
+.cm-editor .cm-activeLine {
+  background: #d4a04a08;
+}
+.cm-editor .cm-cursor {
+  border-left-color: var(--color-accent);
+  border-left-width: 2px;
+}
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: #d4a04a20 !important;
+}
+.cm-editor .cm-matchingBracket {
+  background: #d4a04a30;
+  outline: 1px solid #d4a04a50;
+}
+
+/* Syntax colors handled programmatically via HighlightStyle */
+
+/* File tree */
+.file-tree-item {
+  transition: background-color 0.1s ease;
+}
+.file-tree-item:hover {
+  background: var(--color-bg-hover);
+}
+.file-tree-item.active {
+  background: var(--color-bg-active);
+  border-left: 2px solid var(--color-accent);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--color-accent-glow); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease;
+}
+.animate-slide-up {
+  animation: slideUp 0.4s ease;
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Panel resize handle */
+[data-resize-handle-active] {
+  background: var(--color-accent) !important;
+}
