@@ -74,3 +74,7 @@ export function setSettings(s: Partial<Settings>): Settings {
 export function listUsers(): User[] {
   return readDb().users
 }
+
+export function getUserCount(): number {
+  return readDb().users.length
+}

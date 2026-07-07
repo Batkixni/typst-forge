@@ -4,7 +4,7 @@ import { signIn, signOut, useSession } from "next-auth/react"
 import { LogOut, ChevronDown, User } from "lucide-react"
 import { GithubIcon } from "@/components/GithubIcon"
 
-export default function LoginButton() {
+export default function LoginButton({ label }: { label?: string }) {
   const { data: session } = useSession()
 
   if (session) {
@@ -49,7 +49,7 @@ export default function LoginButton() {
       className="flex items-center gap-2 px-4 py-2 bg-accent text-black rounded-lg text-sm font-medium hover:bg-accent-hover transition-all duration-200 shadow-lg shadow-accent/10"
     >
       <GithubIcon size={16} />
-      Sign in with GitHub
+      {label || "Sign in with GitHub"}
     </button>
   )
 }
