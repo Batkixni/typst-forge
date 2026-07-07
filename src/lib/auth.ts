@@ -1,6 +1,6 @@
 import NextAuth from "next-auth"
 import GitHub from "next-auth/providers/github"
-import { findUser, createUser, getSettings, getUserCount } from "./db"
+import { findUser, createUser, getSettings, getUserCount, listUsers } from "./db"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
@@ -17,7 +17,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     async signIn({ user, account }) {
-      if (!user.id || !account?.access_token) return false
+      if (!user.id) return false
       const existing = findUser(user.id)
       if (existing) return true
       const isFirst = getUserCount() === 0
@@ -25,8 +25,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         createUser(user.id, user.name || "Unknown", user.image || null)
         return true
       }
+      if (process.env.NODE_ENV === "development") {
+        createUser(user.id, user.name || "Unknown", user.image || null)
+        return true
+      }
       const settings = getSettings()
       if (settings.allowRegistration) {
+        createUser(user.id, user.name || "Unknown", user.image || null)
+        return true
+      }
+      const hasAdmin = listUsers().some((u) => u.role === "admin")
+      if (!hasAdmin) {
         createUser(user.id, user.name || "Unknown", user.image || null)
         return true
       }
