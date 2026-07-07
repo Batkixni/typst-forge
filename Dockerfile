@@ -1,7 +1,6 @@
-FROM node:22-slim AS builder
+FROM node:22-alpine AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates xz-utils \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache wget tar xz python3 make g++
 
 RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz \
   | tar -xJ -C /tmp && \
@@ -14,10 +13,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-slim AS runner
+FROM node:22-alpine AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates xz-utils \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache wget tar xz
 
 RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-unknown-linux-musl.tar.xz \
   | tar -xJ -C /tmp && \
