@@ -12,11 +12,32 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
 
 const dbPath = join(dataDir, "better-auth.db")
 
+const nativeDb = new Database(dbPath)
 const kyselyDb = new Kysely<any>({
   dialect: new SqliteDialect({
-    database: new Database(dbPath),
+    database: nativeDb,
   }),
 })
+
+function createTables() {
+  const existing = nativeDb.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table'`
+  ).all().map((r: any) => r.name)
+  const need: Record<string, string> = {
+    user: "id text primary key, name text not null, email text not null unique, emailVerified integer not null default 0, image text, createdAt text not null, updatedAt text not null, role text not null default 'user', githubId text not null",
+    session: "id text primary key, expiresAt text not null, token text not null unique, createdAt text not null, updatedAt text not null, ipAddress text, userAgent text, userId text not null references user(id) on delete cascade, accessToken text",
+    account: "id text primary key, accountId text not null, providerId text not null, userId text not null references user(id) on delete cascade, accessToken text, refreshToken text, idToken text, accessTokenExpiresAt text, refreshTokenExpiresAt text, scope text, password text, createdAt text not null, updatedAt text not null",
+    verification: "id text primary key, identifier text not null, value text not null, expiresAt text not null, createdAt text not null, updatedAt text not null",
+  }
+  for (const [name, cols] of Object.entries(need)) {
+    if (!existing.includes(name)) {
+      nativeDb.exec(`CREATE TABLE ${name} (${cols})`)
+      console.log(`[BetterAuth] Created table: ${name}`)
+    }
+  }
+}
+
+createTables()
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL || "http://localhost:3000",
