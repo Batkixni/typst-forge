@@ -101,6 +101,22 @@ export const auth = betterAuth({
     },
     user: {
       create: {
+        before: async (user, context) => {
+          if (context) {
+            const existing = await context.context.adapter.findMany({
+              model: "user",
+              where: [],
+            })
+            if (!existing || existing.length === 0) {
+              return {
+                data: {
+                  ...user,
+                  role: "admin",
+                },
+              }
+            }
+          }
+        },
         after: async (user, _ctx) => {
           deduplicateUsers()
           const ghId = (user as Record<string, unknown>).githubId as string
