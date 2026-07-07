@@ -9,6 +9,7 @@ services:
       AUTH_SECRET: ${AUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${AUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
     volumes:
       - typst-forge-data:/app/data
 
