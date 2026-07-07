@@ -49,8 +49,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   pages: {
-    signIn: "/",
-    error: "/?error=AccessDenied",
+    signIn: "/login",
+    error: "/login?error=AccessDenied",
   },
 })
 
