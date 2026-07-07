@@ -45,8 +45,10 @@ export function findUser(githubId: string): User | null {
   return db.users.find((u) => u.githubId === githubId) ?? null
 }
 
-export function createUser(githubId: string, name: string, avatar: string | null): User {
+export function findOrCreateUser(githubId: string, name: string, avatar: string | null): User {
   const db = readDb()
+  const existing = db.users.find((u) => u.githubId === githubId)
+  if (existing) return existing
   const isFirst = db.users.length === 0
   const user: User = {
     githubId,
@@ -58,6 +60,23 @@ export function createUser(githubId: string, name: string, avatar: string | null
   db.users.push(user)
   writeDb(db)
   return user
+}
+
+// remove duplicates in case race condition created any
+export function deduplicateUsers(): void {
+  const db = readDb()
+  const seen = new Set<string>()
+  const deduped: User[] = []
+  for (const u of db.users) {
+    if (!seen.has(u.githubId)) {
+      seen.add(u.githubId)
+      deduped.push(u)
+    }
+  }
+  if (deduped.length !== db.users.length) {
+    db.users = deduped
+    writeDb(db)
+  }
 }
 
 export function getSettings(): Settings {

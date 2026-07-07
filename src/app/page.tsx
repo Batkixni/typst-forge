@@ -12,30 +12,7 @@ export default async function HomePage(props: {
   const searchParams = await props.searchParams
   const accessDenied = searchParams?.error === "AccessDenied"
 
-  if (session) {
-    if (session.pending) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-accent/[0.04] via-transparent to-transparent pointer-events-none" />
-          <div className="relative z-10 flex flex-col items-center gap-6 text-center max-w-sm animate-fade-in">
-            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center">
-              <FileText size={28} className="text-red-400" />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight text-text-primary">
-                Registration <span className="text-red-400">Closed</span>
-              </h1>
-              <p className="text-sm text-text-tertiary leading-relaxed">
-                New user registration is currently disabled.
-                Sign in with an existing account or contact the admin.
-              </p>
-            </div>
-          </div>
-        </div>
-      )
-    }
-    redirect("/projects")
-  }
+  if (session) redirect("/projects")
 
   const userCount = getUserCount()
   if (userCount === 0) redirect("/init")
