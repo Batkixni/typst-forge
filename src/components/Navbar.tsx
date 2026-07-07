@@ -11,7 +11,7 @@ export default function Navbar() {
   const { data: session } = authClient.useSession()
   const pathname = usePathname()
 
-  if (pathname.startsWith("/editor/")) return null
+  if (pathname === "/" || pathname.startsWith("/editor/")) return null
 
   return (
     <nav className="flex items-center justify-between px-6 h-14 border-b border-border-secondary bg-bg-primary/80 backdrop-blur-md">

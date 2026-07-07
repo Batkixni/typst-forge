@@ -6,10 +6,7 @@ services:
     environment:
       AUTH_GITHUB_ID: ${AUTH_GITHUB_ID}
       AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET}
-      AUTH_SECRET: ${AUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL}
-      NEXTAUTH_SECRET: ${AUTH_SECRET}
-      AUTH_TRUST_HOST: "true"
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
     volumes:
       - typst-forge-data:/app/data
 
