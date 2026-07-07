@@ -45,6 +45,10 @@ export const auth = betterAuth({
       clientId: process.env.AUTH_GITHUB_ID!,
       clientSecret: process.env.AUTH_GITHUB_SECRET!,
       scope: ["read:user", "user:email", "repo"],
+      mapProfileToUser: (profile: any) => ({
+        id: String(profile.id),
+        githubId: String(profile.id),
+      } as any),
     },
   },
   user: {
