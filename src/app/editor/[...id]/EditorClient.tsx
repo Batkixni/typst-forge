@@ -96,7 +96,7 @@ function EditorContent({ projectId }: { projectId: string }) {
         store.setFiles(tree)
 
         const first = findFirstFile(tree, ".typ")
-        if (first) {
+        if (first && !store.currentFilePath) {
           store.setCurrentFile(first.path)
           // file-switching effect handles loadFile + compile
         }
