@@ -145,3 +145,55 @@ body {
 [data-resize-handle-active] {
   background: var(--color-accent) !important;
 }
+
+/* CodeMirror autocomplete tooltip dark theme */
+.cm-tooltip {
+  background: var(--color-bg-elevated) !important;
+  border: 1px solid var(--color-border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  color: var(--color-text-primary) !important;
+}
+.cm-tooltip.cm-completionInfo {
+  background: var(--color-bg-elevated) !important;
+  border: 1px solid var(--color-border-primary) !important;
+  color: var(--color-text-secondary) !important;
+  padding: 0.5rem !important;
+  font-size: 12px !important;
+}
+.cm-completionList {
+  background: transparent !important;
+  max-height: 240px !important;
+}
+.cm-completionLabel {
+  color: var(--color-text-primary) !important;
+  font-size: 13px !important;
+}
+.cm-completionDetail {
+  color: var(--color-text-tertiary) !important;
+  font-size: 11px !important;
+  margin-left: 0.5rem !important;
+}
+.cm-completionType {
+  color: var(--color-accent) !important;
+  font-size: 10px !important;
+}
+.cm-completionIcon {
+  color: var(--color-text-tertiary) !important;
+}
+li.cm-completionOption {
+  padding: 0.35rem 0.5rem !important;
+  border-radius: var(--radius-sm) !important;
+}
+li.cm-completionOption:hover,
+li.cm-completionOption[aria-selected="true"] {
+  background: var(--color-bg-hover) !important;
+  color: var(--color-accent) !important;
+}
+li.cm-completionOption[aria-selected="true"] .cm-completionLabel {
+  color: var(--color-accent) !important;
+}
+.cm-active-tooltip .cm-tooltip-arrow:before,
+.cm-tooltip-arrow:after {
+  border-top-color: var(--color-bg-elevated) !important;
+}

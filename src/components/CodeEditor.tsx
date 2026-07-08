@@ -6,7 +6,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLi
 import { EditorState, Compartment } from "@codemirror/state"
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
 import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching, HighlightStyle } from "@codemirror/language"
-import { closeBrackets, autocompletion, completionKeymap } from "@codemirror/autocomplete"
+import { closeBrackets, autocompletion, completionKeymap, acceptCompletion } from "@codemirror/autocomplete"
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
 import { tags } from "@lezer/highlight"
 import { typstLanguage } from "@/lib/typst-lang"
@@ -123,7 +123,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
           defaultKeymap: true,
           icons: false,
         }),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...completionKeymap]),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...completionKeymap, { key: "Tab", run: acceptCompletion }]),
         syntaxHighlighting(vsCodeStyle, { fallback: true }),
         typstLanguage(),
         customTheme,

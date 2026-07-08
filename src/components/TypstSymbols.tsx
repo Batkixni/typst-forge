@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react"
 import { Search, X, Check } from "lucide-react"
-import { typstSymbols, typstSymbolCategories, searchSymbols } from "@/lib/typst-symbols"
+import { typstSymbols, typstSymbolCategories, searchSymbols, getSymbolDisplay } from "@/lib/typst-symbols"
 import { cn } from "@/lib/utils"
 
 export interface TypstSymbolsProps {
@@ -102,8 +102,8 @@ export default function TypstSymbols({ onInsert }: TypstSymbolsProps) {
                   copied === s.name && "border-accent/50 bg-accent/10"
                 )}
               >
-                <span className="text-sm font-serif leading-none text-text-primary group-hover:text-accent">
-                  {s.insert.startsWith("#") ? s.insert : s.insert.length > 1 ? s.insert.slice(0, 2) : s.insert}
+              <span className="text-xl leading-none text-text-primary group-hover:text-accent font-serif">
+                  {getSymbolDisplay(s)}
                 </span>
                 <span className="text-[9px] text-text-tertiary truncate w-full text-center">{s.name}</span>
                 {copied === s.name && <Check size={10} className="text-accent absolute top-1 right-1" />}
