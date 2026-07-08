@@ -5,7 +5,7 @@ import { useEditorStore } from "@/store/editor"
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view"
 import { EditorState } from "@codemirror/state"
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess } from "@codemirror/commands"
-import { syntaxHighlighting, indentOnInput, bracketMatching, HighlightStyle, Language, defineLanguageFacet, LanguageSupport } from "@codemirror/language"
+import { syntaxHighlighting, indentOnInput, bracketMatching, HighlightStyle, Language, defineLanguageFacet, LanguageSupport, indentService, indentUnit } from "@codemirror/language"
 import { closeBrackets, autocompletion, completionKeymap, acceptCompletion } from "@codemirror/autocomplete"
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
 import { tags } from "@lezer/highlight"
@@ -17,7 +17,16 @@ const typstLanguageData = defineLanguageFacet({ commentTokens: { block: { open: 
 function typstLanguageSupport() {
   const parser = new (TypstParser as any)(typstHighlight)
   const language = new Language(typstLanguageData, parser, [parser.updateListener()], "typst")
-  return new LanguageSupport(language, [syntaxHighlighting(typstThemeStyle)])
+  return new LanguageSupport(language, [
+    syntaxHighlighting(typstThemeStyle),
+    indentUnit.of("  "),
+    indentService.of((context, pos) => {
+      const line = context.state.doc.lineAt(pos)
+      if (line.number <= 1) return null
+      const prevLine = context.state.doc.line(line.number - 1)
+      return context.lineIndent(prevLine.from)
+    }),
+  ])
 }
 
 export interface CodeEditorHandle {
