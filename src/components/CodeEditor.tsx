@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import { useEditorStore } from "@/store/editor"
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view"
 import { EditorState } from "@codemirror/state"
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess } from "@codemirror/commands"
 import { syntaxHighlighting, indentOnInput, bracketMatching, HighlightStyle, Language, defineLanguageFacet, LanguageSupport } from "@codemirror/language"
 import { closeBrackets, autocompletion, completionKeymap, acceptCompletion } from "@codemirror/autocomplete"
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
@@ -87,6 +87,14 @@ const customTheme = EditorView.theme({
   ".cm-matchingBracket": { backgroundColor: "#8f481e50", outline: "1px solid #8f481e80" },
 })
 
+function tabCommand(view: EditorView) {
+  return acceptCompletion(view) || indentMore(view)
+}
+
+function shiftTabCommand(view: EditorView) {
+  return indentLess(view)
+}
+
 const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, ref) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -133,7 +141,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
           defaultKeymap: true,
           icons: false,
         }),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...completionKeymap, { key: "Tab", run: acceptCompletion }]),
+        keymap.of([
+          { key: "Tab", run: tabCommand },
+          { key: "Shift-Tab", run: shiftTabCommand },
+          ...defaultKeymap.filter((b) => b.key !== "Tab"),
+          ...historyKeymap,
+          ...searchKeymap,
+          ...completionKeymap,
+        ]),
         typstLanguageSupport(),
         customTheme,
         EditorView.updateListener.of(onUpdate),
