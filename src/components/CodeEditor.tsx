@@ -5,12 +5,20 @@ import { useEditorStore } from "@/store/editor"
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view"
 import { EditorState } from "@codemirror/state"
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
-import { syntaxHighlighting, indentOnInput, bracketMatching, HighlightStyle } from "@codemirror/language"
+import { syntaxHighlighting, indentOnInput, bracketMatching, HighlightStyle, Language, defineLanguageFacet, LanguageSupport } from "@codemirror/language"
 import { closeBrackets, autocompletion, completionKeymap, acceptCompletion } from "@codemirror/autocomplete"
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
 import { tags } from "@lezer/highlight"
-import { typst } from "codemirror-lang-typst"
+import { TypstParser, typstHighlight } from "codemirror-lang-typst"
 import { typstAutocomplete } from "@/lib/typst-autocomplete"
+
+const typstLanguageData = defineLanguageFacet({ commentTokens: { block: { open: "/*", close: "*/" } } })
+
+function typstLanguageSupport() {
+  const parser = new (TypstParser as any)(typstHighlight)
+  const language = new Language(typstLanguageData, parser, [parser.updateListener()], "typst")
+  return new LanguageSupport(language, [syntaxHighlighting(typstThemeStyle)])
+}
 
 export interface CodeEditorHandle {
   insertText: (text: string) => void
@@ -126,8 +134,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
           icons: false,
         }),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...completionKeymap, { key: "Tab", run: acceptCompletion }]),
-        typst(),
-        syntaxHighlighting(typstThemeStyle),
+        typstLanguageSupport(),
         customTheme,
         EditorView.updateListener.of(onUpdate),
         EditorView.lineWrapping,
