@@ -23,6 +23,9 @@ import {
   PanelLeft,
   Type,
   X,
+  ChevronDown,
+  Download,
+  FileImage,
 } from "lucide-react"
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"])
@@ -62,6 +65,8 @@ function EditorContent({ projectId }: { projectId: string }) {
   const [loadingFonts, setLoadingFonts] = useState(false)
   const [fontError, setFontError] = useState("")
   const [compileError, setCompileError] = useState("")
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -227,6 +232,49 @@ function EditorContent({ projectId }: { projectId: string }) {
     }
   }, [])
 
+  const exportFile = useCallback(async (format: "pdf" | "png" | "svg") => {
+    const state = useEditorStore.getState()
+    if (!state.currentFilePath?.endsWith(".typ")) return
+    state.setIsCompiling(true)
+    setCompileError("")
+    setShowExportMenu(false)
+    try {
+      const { currentContent, owner, repo, currentFilePath } = state
+      const baseName = currentFilePath.split("/").pop()?.replace(/\.typ$/, "") || "output"
+      const res = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: currentContent,
+          owner,
+          repo,
+          format,
+          filename: `${baseName}.${format === "png" ? "zip" : format}`,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setCompileError(err.error || `Export ${format.toUpperCase()} failed`)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const ext = format === "png" ? "zip" : format
+      a.download = `${baseName}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setCompileError(`Export ${format.toUpperCase()} request failed`)
+      console.error(`Export ${format} failed:`, err)
+    } finally {
+      state.setIsCompiling(false)
+    }
+  }, [])
+
   async function fetchFonts() {
     const state = useEditorStore.getState()
     if (!state.owner || !state.repo) return
@@ -245,6 +293,16 @@ function EditorContent({ projectId }: { projectId: string }) {
       setLoadingFonts(false)
     }
   }
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const ext = store.currentFilePath?.split(".").pop()?.toLowerCase() || ""
   const isTypst = store.currentFilePath?.endsWith(".typ")
@@ -359,11 +417,54 @@ function EditorContent({ projectId }: { projectId: string }) {
             </button>
           )}
           {isTypst && (
-            <button onClick={doCompile} disabled={store.isCompiling}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-black rounded-md hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-              {store.isCompiling ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-              Compile
-            </button>
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                onClick={() => setShowExportMenu((v) => !v)}
+                disabled={store.isCompiling}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-black rounded-md hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {store.isCompiling ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Play size={13} />
+                )}
+                Compile
+                <ChevronDown size={13} className={`transition-transform ${showExportMenu ? "rotate-180" : ""}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 w-40 bg-bg-elevated border border-border-primary rounded-lg shadow-xl overflow-hidden z-50">
+                  <button
+                    onClick={() => { doCompile(); setShowExportMenu(false) }}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-left"
+                  >
+                    <Play size={13} className="text-accent" />
+                    Preview
+                  </button>
+                  <div className="h-px bg-border-secondary mx-2" />
+                  <button
+                    onClick={() => exportFile("pdf")}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-left"
+                  >
+                    <FileText size={13} className="text-text-tertiary" />
+                    Export PDF
+                  </button>
+                  <button
+                    onClick={() => exportFile("png")}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-left"
+                  >
+                    <FileImage size={13} className="text-text-tertiary" />
+                    Export PNG
+                  </button>
+                  <button
+                    onClick={() => exportFile("svg")}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-left"
+                  >
+                    <Download size={13} className="text-text-tertiary" />
+                    Export SVG
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </header>
