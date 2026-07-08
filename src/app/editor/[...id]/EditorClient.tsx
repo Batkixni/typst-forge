@@ -7,8 +7,11 @@ import { useEditorStore } from "@/store/editor"
 import { getFileTree, getFileContent, getFileBlob } from "@/lib/github"
 import FileTree from "@/components/FileTree"
 import CodeEditor from "@/components/CodeEditor"
+import type { CodeEditorHandle } from "@/components/CodeEditor"
 import PreviewPanel from "@/components/PreviewPanel"
 import AuthGuard from "@/components/AuthGuard"
+import CodebaseSearch from "@/components/CodebaseSearch"
+import TypstSymbols from "@/components/TypstSymbols"
 import { ResizablePanelGroup } from "@/components/ResizablePanels"
 import {
   Loader2,
@@ -26,7 +29,10 @@ import {
   ChevronDown,
   Download,
   FileImage,
+  Search,
+  Grid3X3,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"])
 const BINARY_EXT = new Set(["pdf", ...IMAGE_EXT])
@@ -66,7 +72,9 @@ function EditorContent({ projectId }: { projectId: string }) {
   const [fontError, setFontError] = useState("")
   const [compileError, setCompileError] = useState("")
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [leftTab, setLeftTab] = useState<"files" | "search" | "symbols">("files")
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const codeEditorRef = useRef<CodeEditorHandle>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -310,13 +318,39 @@ function EditorContent({ projectId }: { projectId: string }) {
   const showEditor = isTextFile && store.currentFilePath
 
   function panelFiles() {
+    const tabs = [
+      { id: "files" as const, icon: FolderTree, label: "Files" },
+      { id: "search" as const, icon: Search, label: "Search" },
+      { id: "symbols" as const, icon: Grid3X3, label: "Symbols" },
+    ]
     return (
       <div className="h-full flex flex-col bg-bg-secondary">
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border-secondary">
-          <FolderTree size={13} className="text-text-tertiary" />
-          <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">Files</span>
+        <div className="flex items-center border-b border-border-secondary">
+          {tabs.map((t) => {
+            const Icon = t.icon
+            const active = leftTab === t.id
+            return (
+              <button
+                key={t.id}
+                onClick={() => setLeftTab(t.id)}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors",
+                  active
+                    ? "text-accent bg-accent/5 border-b border-accent"
+                    : "text-text-tertiary hover:text-text-primary hover:bg-bg-hover"
+                )}
+              >
+                <Icon size={11} />
+                {t.label}
+              </button>
+            )
+          })}
         </div>
-        <div className="flex-1 overflow-y-auto"><FileTree /></div>
+        <div className="flex-1 overflow-hidden min-h-0">
+          {leftTab === "files" && <FileTree />}
+          {leftTab === "search" && <CodebaseSearch />}
+          {leftTab === "symbols" && <TypstSymbols onInsert={(text) => codeEditorRef.current?.insertText(text)} />}
+        </div>
       </div>
     )
   }
@@ -334,7 +368,7 @@ function EditorContent({ projectId }: { projectId: string }) {
         <div className="flex-1 overflow-hidden">
           {store.isLoading ? (
             <div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-accent" /></div>
-          ) : <CodeEditor />}
+          ) : <CodeEditor ref={codeEditorRef} />}
         </div>
       </div>
     )

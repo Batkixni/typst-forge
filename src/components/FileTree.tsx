@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useMemo, useEffect } from "react"
 import { useEditorStore } from "@/store/editor"
 import { authClient } from "@/lib/auth-client"
 import {
@@ -16,6 +16,7 @@ import {
   X,
   Check,
   Upload,
+  Search,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectFile } from "@/types"
@@ -115,7 +116,53 @@ export default function FileTree() {
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function filterTree(nodes: ProjectFile[], query: string): ProjectFile[] {
+    if (!query.trim()) return nodes
+    const q = query.toLowerCase()
+    return nodes.reduce<ProjectFile[]>((acc, node) => {
+      if (node.type === "file") {
+        if (node.name.toLowerCase().includes(q) || node.path.toLowerCase().includes(q)) {
+          acc.push(node)
+        }
+      } else if (node.children) {
+        const filteredChildren = filterTree(node.children, q)
+        if (filteredChildren.length > 0 || node.name.toLowerCase().includes(q)) {
+          acc.push({ ...node, children: filteredChildren })
+        }
+      }
+      return acc
+    }, [])
+  }
+
+  const filteredFiles = useMemo(() => filterTree(files, searchQuery), [files, searchQuery])
+
+  useEffect(() => {
+    // Auto-expand directories containing search matches
+    if (!searchQuery.trim()) return
+    const pathsToExpand = new Set<string>()
+    function collectParentPaths(nodes: ProjectFile[]) {
+      for (const node of nodes) {
+        if (node.type === "dir" && node.children) {
+          const childMatches = filterTree(node.children, searchQuery).length > 0
+          if (childMatches || node.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+            pathsToExpand.add(node.path)
+            collectParentPaths(node.children)
+          }
+        }
+      }
+    }
+    collectParentPaths(files)
+    if (pathsToExpand.size > 0) {
+      useEditorStore.setState((s) => {
+        const next = new Set(s.expandedPaths)
+        pathsToExpand.forEach((p) => next.add(p))
+        return { expandedPaths: next }
+      })
+    }
+  }, [searchQuery, files])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -240,6 +287,26 @@ export default function FileTree() {
         </div>
       </div>
 
+      <div className="px-3 pb-2">
+        <div className="relative">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter files..."
+            className="w-full bg-bg-tertiary text-text-primary text-xs pl-8 pr-7 py-1.5 rounded border border-border-secondary outline-none focus:border-accent/50"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {creating && (
         <form onSubmit={handleCreate} className="flex items-center gap-1 px-3 pb-2" style={{ paddingLeft: "24px" }}>
           {creating.type === "dir" ? <Folder size={12} className="text-text-tertiary shrink-0" /> : <File size={12} className="text-text-tertiary shrink-0" />}
@@ -262,14 +329,14 @@ export default function FileTree() {
         </form>
       )}
 
-      {files.length === 0 && pendingUploads.length === 0 ? (
+      {filteredFiles.length === 0 && pendingUploads.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-text-tertiary p-4 text-center mt-8">
           <Folder size={24} className="mb-2 opacity-40" />
           <p className="text-xs">No files</p>
         </div>
       ) : (
         <>
-          {files.map((file) => (
+          {filteredFiles.map((file) => (
             <TreeNode key={file.path} node={file} onNewFile={(p) => setCreating({ parentPath: p, type: "file" })}
               onNewFolder={(p) => setCreating({ parentPath: p, type: "dir" })} onDelete={handleDelete} />
           ))}

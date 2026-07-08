@@ -1,15 +1,20 @@
 "use client"
 
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react"
 import { useEditorStore } from "@/store/editor"
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view"
 import { EditorState, Compartment } from "@codemirror/state"
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
 import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching, HighlightStyle } from "@codemirror/language"
-import { closeBrackets, autocompletion } from "@codemirror/autocomplete"
+import { closeBrackets, autocompletion, completionKeymap } from "@codemirror/autocomplete"
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
 import { tags } from "@lezer/highlight"
 import { typstLanguage } from "@/lib/typst-lang"
+import { typstAutocomplete } from "@/lib/typst-autocomplete"
+
+export interface CodeEditorHandle {
+  insertText: (text: string) => void
+}
 
 const vsCodeStyle = HighlightStyle.define([
   { tag: tags.keyword, color: "#569cd6" },
@@ -72,10 +77,23 @@ const customTheme = EditorView.theme({
   ".cm-matchingBracket": { backgroundColor: "#d4a04a30", outline: "1px solid #d4a04a50" },
 })
 
-export default function CodeEditor() {
+const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, ref) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const { currentContent, setCurrentContent } = useEditorStore()
+
+  useImperativeHandle(ref, () => ({
+    insertText: (text: string) => {
+      const view = viewRef.current
+      if (!view) return
+      const selection = view.state.selection.main
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert: text },
+        selection: { anchor: selection.from + text.length },
+      })
+      view.focus()
+    },
+  }))
 
   const onUpdate = useCallback(
     (update: import("@codemirror/view").ViewUpdate) => {
@@ -100,8 +118,12 @@ export default function CodeEditor() {
         closeBrackets(),
         indentOnInput(),
         history(),
-        autocompletion(),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        autocompletion({
+          override: [typstAutocomplete],
+          defaultKeymap: true,
+          icons: false,
+        }),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...completionKeymap]),
         syntaxHighlighting(vsCodeStyle, { fallback: true }),
         typstLanguage(),
         customTheme,
@@ -126,4 +148,6 @@ export default function CodeEditor() {
   }, [currentContent])
 
   return <div className="h-full overflow-hidden"><div ref={editorRef} className="h-full" /></div>
-}
+})
+
+export default CodeEditor
