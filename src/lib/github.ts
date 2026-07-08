@@ -200,6 +200,58 @@ export async function deleteFile(
   })
 }
 
+export async function renameFile(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  oldPath: string,
+  newPath: string,
+  message: string
+): Promise<void> {
+  const octokit = getOctokit(accessToken)
+
+  const { data: fileData } = await octokit.repos.getContent({ owner, repo, path: oldPath })
+  if (Array.isArray(fileData) || fileData.type !== "file") throw new Error("Cannot rename a directory or symlink")
+
+  const { data: refData } = await octokit.git.getRef({ owner, repo, ref: "heads/main" })
+  const currentCommitSha = refData.object.sha
+
+  const { data: commitData } = await octokit.git.getCommit({ owner, repo, commit_sha: currentCommitSha })
+  const baseTreeSha = commitData.tree.sha
+
+  const { data: blobData } = await octokit.git.createBlob({
+    owner,
+    repo,
+    content: fileData.content,
+    encoding: "base64",
+  })
+
+  const { data: newTreeData } = await octokit.git.createTree({
+    owner,
+    repo,
+    base_tree: baseTreeSha,
+    tree: [
+      { path: oldPath, mode: "100644", type: "blob", sha: null },
+      { path: newPath, mode: "100644", type: "blob", sha: blobData.sha },
+    ],
+  })
+
+  const { data: newCommitData } = await octokit.git.createCommit({
+    owner,
+    repo,
+    message,
+    tree: newTreeData.sha,
+    parents: [currentCommitSha],
+  })
+
+  await octokit.git.updateRef({
+    owner,
+    repo,
+    ref: "heads/main",
+    sha: newCommitData.sha,
+  })
+}
+
 export async function getFileContent(
   accessToken: string,
   owner: string,

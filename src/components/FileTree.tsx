@@ -17,6 +17,7 @@ import {
   Check,
   Upload,
   Search,
+  Pencil,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectFile } from "@/types"
@@ -43,76 +44,147 @@ function getFileIcon(name: string) {
   }
 }
 
-function TreeNode({ node, depth = 0, onNewFile, onNewFolder, onDelete }: {
+function RenameForm({ initialName, onSubmit, onCancel, depth, folder }: {
+  initialName: string
+  onSubmit: (newName: string) => void
+  onCancel: () => void
+  depth: number
+  folder?: boolean
+}) {
+  const [value, setValue] = useState(initialName)
+
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onSubmit(value.trim()) }}
+      className="flex items-center gap-1 flex-1 min-w-0 px-3 py-1"
+      style={{ paddingLeft: folder ? `${12 + depth * 14}px` : `${24 + depth * 14}px` }}
+    >
+      {folder ? <Folder size={12} className="text-text-tertiary shrink-0" /> : getFileIcon(initialName)}
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="flex-1 bg-bg-tertiary text-text-primary text-xs px-2 py-1 rounded border border-border-secondary outline-none focus:border-accent/50"
+        onKeyDown={(e) => { if (e.key === "Escape") onCancel() }}
+      />
+      <button type="submit" disabled={!value.trim() || value.trim() === initialName}
+        className="p-1 rounded text-accent hover:bg-bg-hover disabled:opacity-30 transition-colors">
+        <Check size={12} />
+      </button>
+      <button type="button" onClick={onCancel}
+        className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors">
+        <X size={12} />
+      </button>
+    </form>
+  )
+}
+
+function TreeNode({ node, depth = 0, onNewFile, onNewFolder, onDelete, renaming, onStartRename, onRename }: {
   node: ProjectFile; depth?: number
   onNewFile: (parentPath: string) => void
   onNewFolder: (parentPath: string) => void
   onDelete: (node: ProjectFile) => void
+  renaming: { path: string; name: string } | null
+  onStartRename: (node: ProjectFile) => void
+  onRename: (node: ProjectFile, newName: string) => void
 }) {
   const { currentFilePath, setCurrentFile, expandedPaths, toggleExpanded } = useEditorStore()
   const isExpanded = expandedPaths.has(node.path)
   const isActive = currentFilePath === node.path
 
   if (node.type === "dir") {
+    const isRenaming = renaming?.path === node.path
     return (
       <div>
         <div className="group flex items-center">
-          <button onClick={() => toggleExpanded(node.path)}
-            className={cn("file-tree-item flex items-center gap-1 flex-1 min-w-0 text-left text-sm px-3 py-1",
-              "text-text-secondary hover:text-text-primary transition-colors")}
-            style={{ paddingLeft: `${12 + depth * 14}px` }}
-          >
-            <ChevronRight size={12} className={cn("shrink-0 transition-transform duration-150", isExpanded && "rotate-90")} />
-            {isExpanded ? <FolderOpen size={14} className="shrink-0 text-accent" /> : <Folder size={14} className="shrink-0 text-text-tertiary" />}
+          {isRenaming ? (
+            <RenameForm
+              initialName={node.name}
+              onSubmit={(newName) => onRename(node, newName)}
+              onCancel={() => onStartRename({ ...node, name: "" })}
+              depth={depth}
+              folder
+            />
+          ) : (
+            <>
+              <button onClick={() => toggleExpanded(node.path)}
+                className={cn("file-tree-item flex items-center gap-1 flex-1 min-w-0 text-left text-sm px-3 py-1",
+                  "text-text-secondary hover:text-text-primary transition-colors")}
+                style={{ paddingLeft: `${12 + depth * 14}px` }}>
+                <ChevronRight size={12} className={cn("shrink-0 transition-transform duration-150", isExpanded && "rotate-90")} />
+                {isExpanded ? <FolderOpen size={14} className="shrink-0 text-accent" /> : <Folder size={14} className="shrink-0 text-text-tertiary" />}
+                <span className="truncate">{node.name}</span>
+              </button>
+              <div className="flex items-center gap-0.5 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={(e) => { e.stopPropagation(); onNewFile(node.path) }}
+                  className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors" title="New file">
+                  <File size={11} />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); onNewFolder(node.path) }}
+                  className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors" title="New folder">
+                  <Folder size={11} />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); onStartRename(node) }}
+                  className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors" title="Rename">
+                  <Pencil size={11} />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); onDelete(node) }}
+                  className="p-1 rounded text-text-tertiary hover:text-red-400 hover:bg-bg-hover transition-colors" title="Delete">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+        {isExpanded && node.children?.map((child) => (
+          <TreeNode key={child.path} node={child} depth={depth + 1} onNewFile={onNewFile} onNewFolder={onNewFolder} onDelete={onDelete}
+            renaming={renaming} onStartRename={onStartRename} onRename={onRename} />
+        ))}
+      </div>
+    )
+  }
+
+  const isRenaming = renaming?.path === node.path
+  return (
+    <div className="group flex items-center">
+      {isRenaming ? (
+        <RenameForm
+          initialName={node.name}
+          onSubmit={(newName) => onRename(node, newName)}
+          onCancel={() => onStartRename({ ...node, name: "" })}
+          depth={depth}
+        />
+      ) : (
+        <>
+          <button onClick={() => setCurrentFile(node.path)}
+            className={cn("file-tree-item flex items-center gap-2 flex-1 min-w-0 text-left text-sm px-3 py-1 transition-colors",
+              isActive ? "active text-text-primary" : "text-text-secondary hover:text-text-primary")}
+            style={{ paddingLeft: `${24 + depth * 14}px` }}>
+            {getFileIcon(node.name)}
             <span className="truncate">{node.name}</span>
           </button>
           <div className="flex items-center gap-0.5 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={(e) => { e.stopPropagation(); onNewFile(node.path) }}
-              className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors" title="New file">
-              <File size={11} />
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); onNewFolder(node.path) }}
-              className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors" title="New folder">
-              <Folder size={11} />
+            <button onClick={(e) => { e.stopPropagation(); onStartRename(node) }}
+              className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors" title="Rename">
+              <Pencil size={11} />
             </button>
             <button onClick={(e) => { e.stopPropagation(); onDelete(node) }}
               className="p-1 rounded text-text-tertiary hover:text-red-400 hover:bg-bg-hover transition-colors" title="Delete">
               <Trash2 size={11} />
             </button>
           </div>
-        </div>
-        {isExpanded && node.children?.map((child) => (
-          <TreeNode key={child.path} node={child} depth={depth + 1} onNewFile={onNewFile} onNewFolder={onNewFolder} onDelete={onDelete} />
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className="group flex items-center">
-      <button onClick={() => setCurrentFile(node.path)}
-        className={cn("file-tree-item flex items-center gap-2 flex-1 min-w-0 text-left text-sm px-3 py-1 transition-colors",
-          isActive ? "active text-text-primary" : "text-text-secondary hover:text-text-primary")}
-        style={{ paddingLeft: `${24 + depth * 14}px` }}
-      >
-        {getFileIcon(node.name)}
-        <span className="truncate">{node.name}</span>
-      </button>
-      <div className="flex items-center gap-0.5 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={(e) => { e.stopPropagation(); onDelete(node) }}
-          className="p-1 rounded text-text-tertiary hover:text-red-400 hover:bg-bg-hover transition-colors" title="Delete">
-          <Trash2 size={11} />
-        </button>
-      </div>
+        </>
+      )}
     </div>
   )
 }
 
 export default function FileTree() {
-  const { files, isLoading, owner, repo, pendingUploads, addPendingUpload } = useEditorStore()
+  const { files, isLoading, owner, repo, pendingUploads, addPendingUpload, currentFilePath, setCurrentFile } = useEditorStore()
   const { data: session } = authClient.useSession()
   const refreshFiles = useEditorStore.getState().refreshFiles
   const [creating, setCreating] = useState<{ parentPath: string; type: "file" | "dir" } | null>(null)
+  const [renaming, setRenaming] = useState<{ path: string; name: string } | null>(null)
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -222,6 +294,34 @@ export default function FileTree() {
     }
   }
 
+  async function handleRename(node: ProjectFile, newName: string) {
+    if (!newName || newName === node.name || !(session?.session as { accessToken?: string })?.accessToken || !owner || !repo) return
+    setSaving(true)
+    try {
+      const parentPath = node.path.split("/").slice(0, -1).join("/")
+      const newPath = parentPath ? `${parentPath}/${newName}` : newName
+      const res = await fetch("/api/files/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oldPath: node.path,
+          newPath,
+          owner,
+          repo,
+          message: `Rename ${node.path} to ${newPath}`,
+        }),
+      })
+      if (!res.ok) { const err = await res.json(); console.error("Rename error:", err.error); return }
+      if (currentFilePath === node.path) setCurrentFile(newPath)
+      refreshFiles()
+    } catch (err) {
+      console.error("Rename failed:", err)
+    } finally {
+      setSaving(false)
+      setRenaming(null)
+    }
+  }
+
   function collectAllFiles(node: ProjectFile): string[] {
     if (node.type === "file") return [node.path]
     const result: string[] = []
@@ -316,7 +416,7 @@ export default function FileTree() {
             onChange={(e) => setName(e.target.value)}
             placeholder={creating.type === "dir" ? "folder name" : "file name"}
             className="flex-1 bg-bg-tertiary text-text-primary text-xs px-2 py-1 rounded border border-border-secondary outline-none focus:border-accent/50"
-            onKeyDown={(e) => { if (e.key === "Escape") { setCreating(null); setName("") }}}
+            onKeyDown={(e) => { if (e.key === "Escape") { setCreating(null); setName("") }} }
           />
           <button type="submit" disabled={saving || !name.trim()}
             className="p-1 rounded text-accent hover:bg-bg-hover disabled:opacity-30 transition-colors">
@@ -338,7 +438,8 @@ export default function FileTree() {
         <>
           {filteredFiles.map((file) => (
             <TreeNode key={file.path} node={file} onNewFile={(p) => setCreating({ parentPath: p, type: "file" })}
-              onNewFolder={(p) => setCreating({ parentPath: p, type: "dir" })} onDelete={handleDelete} />
+              onNewFolder={(p) => setCreating({ parentPath: p, type: "dir" })} onDelete={handleDelete}
+              renaming={renaming} onStartRename={(n) => setRenaming({ path: n.path, name: n.name })} onRename={handleRename} />
           ))}
           {pendingUploads.length > 0 && (
             <div className="mt-2 border-t border-border-secondary pt-2">
