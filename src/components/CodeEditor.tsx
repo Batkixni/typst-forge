@@ -9,7 +9,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { closeBrackets, autocompletion, completionKeymap, acceptCompletion } from "@codemirror/autocomplete"
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
 import { tags } from "@lezer/highlight"
-import { typstLanguage } from "@/lib/typst-lang"
+import { typst } from "codemirror-lang-typst"
 import { typstAutocomplete } from "@/lib/typst-autocomplete"
 
 export interface CodeEditorHandle {
@@ -124,8 +124,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
           icons: false,
         }),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...completionKeymap, { key: "Tab", run: acceptCompletion }]),
-        syntaxHighlighting(vsCodeStyle, { fallback: true }),
-        typstLanguage(),
+        typst(),
+        syntaxHighlighting(vsCodeStyle),
         customTheme,
         EditorView.updateListener.of(onUpdate),
         EditorView.lineWrapping,
