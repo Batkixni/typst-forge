@@ -52,8 +52,13 @@ function EditorContent({ projectId }: { projectId: string }) {
   const [isMobile, setIsMobile] = useState(false)
   const [showFonts, setShowFonts] = useState(false)
   const [fontList, setFontList] = useState<{ family: string; styles: string }[]>([])
+  const [fontFiles, setFontFiles] = useState<
+    { path: string; size: number; isLfsPointer: boolean }[]
+  >([])
+  const [fontLfs, setFontLfs] = useState<string[]>([])
   const [loadingFonts, setLoadingFonts] = useState(false)
   const [fontError, setFontError] = useState("")
+  const [fontWarning, setFontWarning] = useState("")
   const [compileError, setCompileError] = useState("")
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [leftTab, setLeftTab] = useState<"files" | "search" | "symbols">("files")
@@ -235,6 +240,7 @@ function EditorContent({ projectId }: { projectId: string }) {
     const gen = ++compileGenRef.current
     state.setIsCompiling(true)
     setCompileError("")
+    setFontWarning("")
     try {
       const res = await fetch("/api/compile", {
         method: "POST",
@@ -250,7 +256,14 @@ function EditorContent({ projectId }: { projectId: string }) {
       if (gen !== compileGenRef.current) return
       if (!res.ok) {
         const err = await res.json()
-        setCompileError(err.error || "Compile failed")
+        let msg = err.error || "Compile failed"
+        if (err.fontDebug) {
+          msg += `\n\n[fonts] staged=${err.fontDebug.staged} files=${err.fontDebug.files?.length ?? 0}`
+          if (err.fontDebug.lfsPointers?.length) {
+            msg += `\nLFS pointers (not real fonts): ${err.fontDebug.lfsPointers.join(", ")}`
+          }
+        }
+        setCompileError(msg)
         return
       }
       const data = await res.json()
@@ -266,6 +279,38 @@ function EditorContent({ projectId }: { projectId: string }) {
       if (s.previewUrl) {
         URL.revokeObjectURL(s.previewUrl)
         s.setPreviewUrl(null)
+      }
+
+      // Warn when CJK text is present but no project fonts were staged
+      const fd = data.fontDebug
+      if (fd) {
+        const hasCjk = /[\u3400-\u9FFF\uF900-\uFAFF]/.test(state.currentContent)
+        const requested = [
+          ...state.currentContent.matchAll(/font:\s*"([^"]+)"/g),
+          ...state.currentContent.matchAll(/font:\s*\(([^)]+)\)/g),
+        ]
+        const names = requested
+          .flatMap((m) => m[1].split(",").map((x: string) => x.replace(/["'\s]/g, "")))
+          .filter(Boolean)
+        const families: string[] = fd.families || []
+        const missing = names.filter(
+          (n: string) =>
+            n &&
+            !families.some((f) => f.toLowerCase() === n.toLowerCase())
+        )
+        if (fd.lfsPointers?.length) {
+          setFontWarning(
+            `Font files are Git LFS pointers (not real fonts): ${fd.lfsPointers.join(", ")}. Upload .ttf/.otf into fonts/ or pull with LFS.`
+          )
+        } else if (fd.staged === 0 && hasCjk) {
+          setFontWarning(
+            "No font files found in this project. Chinese will show as □. Put .ttf/.otf/.ttc into fonts/ (family name must match #set text)."
+          )
+        } else if (missing.length > 0 && hasCjk) {
+          setFontWarning(
+            `Requested font(s) not found by Typst: ${missing.join(", ")}. Loaded ${fd.staged} file(s). Open Fonts to see available family names.`
+          )
+        }
       }
     } catch (err) {
       if (gen === compileGenRef.current) {
@@ -339,6 +384,8 @@ function EditorContent({ projectId }: { projectId: string }) {
       }
       const data = await res.json()
       setFontList(data.fonts || [])
+      setFontFiles(data.files || [])
+      setFontLfs(data.lfsPointers || [])
     } catch (err) {
       setFontError("Network error listing fonts")
     } finally {
@@ -597,6 +644,25 @@ function EditorContent({ projectId }: { projectId: string }) {
             </button>
           </div>
         )}
+        {fontWarning && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 shrink-0 flex items-start gap-2">
+            <p className="flex-1 text-[11px] text-amber-200 leading-relaxed">
+              {fontWarning}{" "}
+              <button
+                onClick={fetchFonts}
+                className="underline text-accent hover:text-accent-hover"
+              >
+                Open Fonts
+              </button>
+            </p>
+            <button
+              onClick={() => setFontWarning("")}
+              className="p-0.5 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 transition-colors shrink-0"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-hidden">
           <PreviewPanel />
         </div>
@@ -801,10 +867,10 @@ function EditorContent({ projectId }: { projectId: string }) {
 
       {showFonts && (
         <div className="relative z-50">
-          <div className="absolute right-4 top-0 w-80 max-h-72 bg-bg-elevated border border-border-primary rounded-lg shadow-xl overflow-hidden">
+          <div className="absolute right-4 top-0 w-96 max-h-[28rem] bg-bg-elevated border border-border-primary rounded-lg shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-secondary">
               <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-                Available Fonts
+                Project Fonts
               </span>
               <button
                 onClick={() => setShowFonts(false)}
@@ -813,7 +879,7 @@ function EditorContent({ projectId }: { projectId: string }) {
                 <X size={13} />
               </button>
             </div>
-            <div className="overflow-y-auto max-h-56">
+            <div className="overflow-y-auto max-h-[24rem]">
               {loadingFonts ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 size={16} className="animate-spin text-accent" />
@@ -822,11 +888,56 @@ function EditorContent({ projectId }: { projectId: string }) {
                 <p className="text-xs text-red-400 text-center py-4 px-3 break-words">
                   {fontError}
                 </p>
-              ) : fontList.length === 0 ? (
-                <p className="text-xs text-text-tertiary text-center py-6">
-                  No fonts in project <code className="text-accent">fonts/</code>
-                </p>
               ) : (
+                <>
+                  <div className="px-3 py-2 border-b border-border-secondary text-[10px] text-text-tertiary space-y-1">
+                    <p>
+                      Files on disk:{" "}
+                      <span className="text-text-secondary">{fontFiles.length}</span>
+                      {" · "}
+                      Families Typst sees:{" "}
+                      <span className="text-text-secondary">{fontList.length}</span>
+                    </p>
+                    <p>
+                      Use exact family name in{" "}
+                      <code className="text-accent">#set text(font: &quot;…&quot;)</code>
+                    </p>
+                    {fontLfs.length > 0 && (
+                      <p className="text-amber-400">
+                        LFS pointers (not usable): {fontLfs.join(", ")}
+                      </p>
+                    )}
+                    {fontFiles.length === 0 && (
+                      <p className="text-amber-400">
+                        No .ttf/.otf/.ttc found. Upload into fonts/ — Docker has no Windows fonts like PMingLiU.
+                      </p>
+                    )}
+                  </div>
+                  {fontFiles.length > 0 && (
+                    <div className="px-3 py-2 border-b border-border-secondary">
+                      <p className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1">
+                        Files
+                      </p>
+                      <ul className="space-y-0.5">
+                        {fontFiles.map((f) => (
+                          <li
+                            key={f.path}
+                            className="text-[11px] font-mono text-text-secondary truncate"
+                          >
+                            {f.path}{" "}
+                            <span className="text-text-tertiary">
+                              ({f.isLfsPointer ? "LFS!" : `${Math.round(f.size / 1024)}KB`})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {fontList.length === 0 ? (
+                    <p className="text-xs text-text-tertiary text-center py-6 px-3">
+                      Typst found no families. Check files above.
+                    </p>
+                  ) : (
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-text-tertiary border-b border-border-secondary">
@@ -850,6 +961,8 @@ function EditorContent({ projectId }: { projectId: string }) {
                     ))}
                   </tbody>
                 </table>
+                  )}
+                </>
               )}
             </div>
           </div>

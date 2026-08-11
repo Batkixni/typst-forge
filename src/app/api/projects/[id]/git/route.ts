@@ -153,6 +153,7 @@ async function materializeTree(
     "typ", "txt", "md", "json", "toml", "yaml", "yml", "css", "html", "js", "ts",
     "tsx", "jsx", "bib", "csv", "svg", "gitignore", "editorconfig",
   ])
+  const FONT_EXT = new Set(["ttf", "otf", "woff", "woff2", "pfb", "pfm", "ttc", "otc"])
 
   async function walk(nodes: ProjectFile[]) {
     for (const node of nodes) {
@@ -164,14 +165,22 @@ async function materializeTree(
           const ext = node.name.includes(".")
             ? node.name.split(".").pop()!.toLowerCase()
             : ""
-          const asText =
-            TEXT_EXT.has(ext) ||
-            node.name === ".gitkeep" ||
-            node.name.startsWith(".")
-          if (asText) {
-            writeTextFile(userId, projectId, node.path, buf.toString("utf-8"))
-          } else {
+
+          // Fonts / binaries always as binary (never UTF-8 round-trip)
+          if (FONT_EXT.has(ext) || (!TEXT_EXT.has(ext) && !node.name.startsWith("."))) {
+            // Detect Git LFS pointer masquerading as a font
+            const head = buf.subarray(0, 80).toString("utf-8")
+            if (
+              FONT_EXT.has(ext) &&
+              head.startsWith("version https://git-lfs.github.com/spec/")
+            ) {
+              console.warn(
+                `[git import] ${node.path} is a Git LFS pointer — real font not downloaded. Enable LFS or upload fonts manually.`
+              )
+            }
             writeBinaryFile(userId, projectId, node.path, buf)
+          } else {
+            writeTextFile(userId, projectId, node.path, buf.toString("utf-8"))
           }
         } catch (e) {
           console.warn("Skip file", node.path, e)

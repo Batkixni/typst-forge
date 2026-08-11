@@ -288,53 +288,162 @@ export function listAllFiles(userId: string, projectId: string): string[] {
   return out
 }
 
-const FONT_EXTS = new Set(["ttf", "otf", "woff", "woff2", "pfb", "pfm", "ttc"])
+export const FONT_EXTS = new Set(["ttf", "otf", "woff", "woff2", "pfb", "pfm", "ttc", "otc"])
+
+export interface DiscoveredFontFile {
+  /** posix path relative to project root */
+  path: string
+  absPath: string
+  size: number
+  /** true if file looks like a Git LFS pointer instead of real font bytes */
+  isLfsPointer: boolean
+}
+
+export function isGitLfsPointer(buf: Buffer): boolean {
+  if (buf.length > 500 || buf.length < 20) return false
+  const head = buf.subarray(0, 80).toString("utf-8")
+  return head.startsWith("version https://git-lfs.github.com/spec/")
+}
+
+function isFontFilename(name: string): boolean {
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : ""
+  return FONT_EXTS.has(ext)
+}
+
+/** Walk whole project tree and list every font file (skips .forge). */
+export function listProjectFontFiles(
+  userId: string,
+  projectId: string
+): DiscoveredFontFile[] {
+  const root = projectDir(userId, projectId)
+  if (!existsSync(root)) return []
+  const out: DiscoveredFontFile[] = []
+
+  function walk(dir: string) {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.name === ".forge" || entry.name === ".git") continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+      } else if (entry.isFile() && isFontFilename(entry.name)) {
+        let size = 0
+        let isLfsPointer = false
+        try {
+          size = statSync(full).size
+          // LFS pointers are tiny text files
+          if (size > 0 && size < 500) {
+            const buf = readFileSync(full)
+            isLfsPointer = isGitLfsPointer(buf)
+          }
+        } catch {
+          /* ignore */
+        }
+        out.push({
+          path: relative(root, full).replace(/\\/g, "/"),
+          absPath: full,
+          size,
+          isLfsPointer,
+        })
+      }
+    }
+  }
+  walk(root)
+  return out
+}
 
 /** Case-insensitive fonts directory candidates under project root. */
 export function getProjectFontDirs(userId: string, projectId: string): string[] {
   const root = projectDir(userId, projectId)
   if (!existsSync(root)) return []
   const dirs: string[] = []
-  for (const name of readdirSync(root, { withFileTypes: true })) {
-    if (!name.isDirectory()) continue
-    if (name.name.toLowerCase() === "fonts" || name.name.toLowerCase() === "font") {
-      dirs.push(join(root, name.name))
+  const seen = new Set<string>()
+
+  function add(dir: string) {
+    const key = dir.toLowerCase()
+    if (!seen.has(key) && existsSync(dir) && statSync(dir).isDirectory()) {
+      seen.add(key)
+      dirs.push(dir)
     }
   }
-  // also nested common path
-  const nested = join(root, "assets", "fonts")
-  if (existsSync(nested) && statSync(nested).isDirectory()) dirs.push(nested)
+
+  add(join(root, "fonts"))
+  add(join(root, "Fonts"))
+  add(join(root, "font"))
+  add(join(root, "assets", "fonts"))
+  add(join(root, "static", "fonts"))
+
+  // any top-level dir named fonts/font (case variants already covered)
+  try {
+    for (const name of readdirSync(root, { withFileTypes: true })) {
+      if (!name.isDirectory()) continue
+      const lower = name.name.toLowerCase()
+      if (lower === "fonts" || lower === "font") add(join(root, name.name))
+    }
+  } catch {
+    /* ignore */
+  }
+
   return dirs
 }
 
-function copyFontsRecursive(srcDir: string, destDir: string, prefix = ""): number {
-  let n = 0
-  if (!existsSync(srcDir)) return 0
-  ensureDir(destDir)
-  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-    const src = join(srcDir, entry.name)
-    if (entry.isDirectory()) {
-      n += copyFontsRecursive(src, destDir, prefix ? `${prefix}_${entry.name}` : entry.name)
-    } else if (entry.isFile()) {
-      const ext = entry.name.split(".").pop()?.toLowerCase() || ""
-      if (!FONT_EXTS.has(ext)) continue
-      // Flatten nested names to avoid collisions
-      const destName = prefix ? `${prefix}_${entry.name}` : entry.name
-      copyFileSync(src, join(destDir, destName))
-      n++
+/**
+ * Prepare font paths for `typst compile --font-path`.
+ * - Always include project root (recursive) so fonts/ anywhere is found
+ * - Always include dedicated fonts dirs
+ * - Stage real font files into destDir (skip LFS pointers)
+ */
+export function prepareCompileFontPaths(
+  userId: string,
+  projectId: string,
+  stagingDir: string
+): {
+  fontPaths: string[]
+  files: DiscoveredFontFile[]
+  staged: number
+  lfsPointers: string[]
+} {
+  ensureDir(stagingDir)
+  const root = projectDir(userId, projectId)
+  const files = listProjectFontFiles(userId, projectId)
+  const lfsPointers = files.filter((f) => f.isLfsPointer).map((f) => f.path)
+  const real = files.filter((f) => !f.isLfsPointer && f.size > 0)
+
+  let staged = 0
+  for (const f of real) {
+    try {
+      // unique flat name: fonts_NotoSans-Regular.ttf
+      const flat = f.path.replace(/[\\/]/g, "_")
+      copyFileSync(f.absPath, join(stagingDir, flat))
+      staged++
+    } catch (err) {
+      console.warn("[fonts] failed to stage", f.path, err)
     }
   }
-  return n
+
+  const fontPaths: string[] = []
+  // Project root — Typst recursively searches (picks up fonts/, nested dirs)
+  if (existsSync(root)) fontPaths.push(root)
+  for (const d of getProjectFontDirs(userId, projectId)) {
+    if (!fontPaths.includes(d)) fontPaths.push(d)
+  }
+  if (staged > 0) fontPaths.push(stagingDir)
+
+  return { fontPaths, files, staged, lfsPointers }
 }
 
-/** Copy all project fonts into destDir (recursive). Returns count copied. */
-export function collectLocalFonts(userId: string, projectId: string, destDir: string): number {
-  ensureDir(destDir)
-  let total = 0
-  for (const dir of getProjectFontDirs(userId, projectId)) {
-    total += copyFontsRecursive(dir, destDir)
-  }
-  return total
+/** @deprecated use prepareCompileFontPaths — kept for fonts API */
+export function collectLocalFonts(
+  userId: string,
+  projectId: string,
+  destDir: string
+): number {
+  return prepareCompileFontPaths(userId, projectId, destDir).staged
 }
 
 export function assertProjectOwned(userId: string, projectId: string): ProjectMeta {

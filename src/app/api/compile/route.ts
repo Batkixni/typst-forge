@@ -1,9 +1,8 @@
 import { getServerSession } from "@/lib/auth"
 import {
   assertProjectOwned,
-  collectLocalFonts,
-  getProjectFontDirs,
   getUserId,
+  prepareCompileFontPaths,
   projectDir,
 } from "@/lib/projects"
 import { NextRequest, NextResponse } from "next/server"
@@ -15,9 +14,7 @@ import { readdir } from "fs/promises"
 
 /**
  * Compile from local project directory so multi-file #import works.
- * Fonts: always load project `fonts/` (and variants) via --font-path.
- * Body: { projectId, entry?, format?: "preview"|"pdf"|"png"|"svg", filename? }
- * Optional content + path: write content to path before compile (for unsaved buffer).
+ * Fonts: project root + fonts/ + staged copies via --font-path (recursive).
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -71,25 +68,31 @@ export async function POST(req: NextRequest) {
       ? join(tmpDir, "page-{n}.svg")
       : join(tmpDir, `output.${outputFormat}`)
 
-    // Prefer pointing Typst at the real project fonts/ dirs (recursive search).
-    // Also copy into a temp dir as a reliable fallback for nested layouts.
-    const fontFlags: string[] = []
-    const projectFontDirs = getProjectFontDirs(userId, projectId)
-    for (const dir of projectFontDirs) {
-      fontFlags.push(`--font-path "${dir}"`)
-    }
+    // Stage + collect every font path under the project
     const stagingFonts = join(tmpDir, "fonts")
     mkdirSync(stagingFonts, { recursive: true })
-    const copied = collectLocalFonts(userId, projectId, stagingFonts)
-    if (copied > 0 && !projectFontDirs.length) {
-      fontFlags.push(`--font-path "${stagingFonts}"`)
-    } else if (copied > 0) {
-      // staging may flatten nested names; keep both
-      fontFlags.push(`--font-path "${stagingFonts}"`)
-    }
+    const fontInfo = prepareCompileFontPaths(userId, projectId, stagingFonts)
 
+    const fontFlag = fontInfo.fontPaths
+      .map((p) => `--font-path "${p}"`)
+      .join(" ")
     const rootFlag = `--root "${root}"`
-    const fontFlag = fontFlags.join(" ")
+
+    // Discover families Typst actually sees (helps debug CJK tofu)
+    let families: string[] = []
+    try {
+      const listed = execSync(`typst fonts ${fontFlag}`.replace(/\s+/g, " "), {
+        timeout: 15000,
+        encoding: "utf-8",
+      })
+      families = listed
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => line.split(/\s{2,}/)[0]?.trim() || line.trim())
+    } catch (err) {
+      console.warn("[compile] typst fonts listing failed:", err)
+    }
 
     try {
       execSync(
@@ -108,10 +111,38 @@ export async function POST(req: NextRequest) {
         error.stderr?.toString() ||
         error.message ||
         "Compilation failed. Ensure Typst CLI is installed."
-      return NextResponse.json({ error: message }, { status: 500 })
+      return NextResponse.json(
+        {
+          error: message,
+          fontDebug: {
+            staged: fontInfo.staged,
+            files: fontInfo.files.map((f) => ({
+              path: f.path,
+              size: f.size,
+              isLfsPointer: f.isLfsPointer,
+            })),
+            lfsPointers: fontInfo.lfsPointers,
+            families,
+          },
+        },
+        { status: 500 }
+      )
     }
 
     const fs = await import("fs/promises")
+
+    const fontDebug = {
+      staged: fontInfo.staged,
+      fileCount: fontInfo.files.length,
+      files: fontInfo.files.map((f) => ({
+        path: f.path,
+        size: f.size,
+        isLfsPointer: f.isLfsPointer,
+      })),
+      lfsPointers: fontInfo.lfsPointers,
+      families: families.slice(0, 200),
+      paths: fontInfo.fontPaths,
+    }
 
     if (isPreview) {
       const files = await readdir(tmpDir)
@@ -129,7 +160,7 @@ export async function POST(req: NextRequest) {
         try {
           await fs.rm(tmpDir, { recursive: true, force: true })
         } catch {}
-        return NextResponse.json({ error: "SVG preview failed" }, { status: 500 })
+        return NextResponse.json({ error: "SVG preview failed", fontDebug }, { status: 500 })
       }
       const pages = await Promise.all(
         list.map((f) => fs.readFile(join(tmpDir, f), "utf-8"))
@@ -137,11 +168,7 @@ export async function POST(req: NextRequest) {
       try {
         await fs.rm(tmpDir, { recursive: true, force: true })
       } catch {}
-      return NextResponse.json({
-        pages,
-        fontDirs: projectFontDirs.map((d) => d.replace(root, "").replace(/\\/g, "/") || "/"),
-        fontsLoaded: copied,
-      })
+      return NextResponse.json({ pages, fontDebug })
     }
 
     let buffer: Buffer
@@ -208,6 +235,7 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${outputFilename}"`,
+        "X-Typst-Fonts-Staged": String(fontInfo.staged),
       },
     })
   } catch (error: any) {
