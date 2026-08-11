@@ -14,7 +14,8 @@ import { readdir } from "fs/promises"
 
 /**
  * Compile from local project directory so multi-file #import works.
- * Fonts: project root + fonts/ + staged copies via --font-path (recursive).
+ * Fonts: project fonts/ dirs + staged copies via --font-path.
+ * NOTE: do NOT run `typst fonts` here — it doubles compile cost and freezes live preview.
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
       filename,
       content,
       path: contentPath,
+      // skip writing buffer if client already auto-saved
+      skipWrite,
     } = body
 
     if (!projectId) {
@@ -41,8 +44,7 @@ export async function POST(req: NextRequest) {
     const meta = assertProjectOwned(userId, projectId)
     const root = projectDir(userId, projectId)
 
-    // Flush editor buffer to disk before compile so preview matches editor
-    if (typeof content === "string" && contentPath) {
+    if (!skipWrite && typeof content === "string" && contentPath) {
       const { writeTextFile } = await import("@/lib/projects")
       writeTextFile(userId, projectId, contentPath, content)
     }
@@ -68,30 +70,27 @@ export async function POST(req: NextRequest) {
       ? join(tmpDir, "page-{n}.svg")
       : join(tmpDir, `output.${outputFormat}`)
 
-    // Stage + collect every font path under the project
     const stagingFonts = join(tmpDir, "fonts")
     mkdirSync(stagingFonts, { recursive: true })
     const fontInfo = prepareCompileFontPaths(userId, projectId, stagingFonts)
 
+    // Prefer dedicated font dirs + staging only (faster than scanning whole project root)
     const fontFlag = fontInfo.fontPaths
       .map((p) => `--font-path "${p}"`)
       .join(" ")
     const rootFlag = `--root "${root}"`
 
-    // Discover families Typst actually sees (helps debug CJK tofu)
-    let families: string[] = []
-    try {
-      const listed = execSync(`typst fonts ${fontFlag}`.replace(/\s+/g, " "), {
-        timeout: 15000,
-        encoding: "utf-8",
-      })
-      families = listed
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => line.split(/\s{2,}/)[0]?.trim() || line.trim())
-    } catch (err) {
-      console.warn("[compile] typst fonts listing failed:", err)
+    const fontDebug = {
+      staged: fontInfo.staged,
+      fileCount: fontInfo.files.length,
+      files: fontInfo.files.map((f) => ({
+        path: f.path,
+        size: f.size,
+        isLfsPointer: f.isLfsPointer,
+        /** Full CJK fonts are usually multi‑MB; tiny files often fail to load */
+        suspiciouslySmall: !f.isLfsPointer && f.size > 0 && f.size < 800_000,
+      })),
+      lfsPointers: fontInfo.lfsPointers,
     }
 
     try {
@@ -100,7 +99,7 @@ export async function POST(req: NextRequest) {
           /\s+/g,
           " "
         ),
-        { timeout: 30000, stdio: "pipe" }
+        { timeout: 60000, stdio: "pipe", maxBuffer: 16 * 1024 * 1024 }
       )
     } catch (error: any) {
       try {
@@ -111,38 +110,10 @@ export async function POST(req: NextRequest) {
         error.stderr?.toString() ||
         error.message ||
         "Compilation failed. Ensure Typst CLI is installed."
-      return NextResponse.json(
-        {
-          error: message,
-          fontDebug: {
-            staged: fontInfo.staged,
-            files: fontInfo.files.map((f) => ({
-              path: f.path,
-              size: f.size,
-              isLfsPointer: f.isLfsPointer,
-            })),
-            lfsPointers: fontInfo.lfsPointers,
-            families,
-          },
-        },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: message, fontDebug }, { status: 500 })
     }
 
     const fs = await import("fs/promises")
-
-    const fontDebug = {
-      staged: fontInfo.staged,
-      fileCount: fontInfo.files.length,
-      files: fontInfo.files.map((f) => ({
-        path: f.path,
-        size: f.size,
-        isLfsPointer: f.isLfsPointer,
-      })),
-      lfsPointers: fontInfo.lfsPointers,
-      families: families.slice(0, 200),
-      paths: fontInfo.fontPaths,
-    }
 
     if (isPreview) {
       const files = await readdir(tmpDir)
@@ -160,7 +131,10 @@ export async function POST(req: NextRequest) {
         try {
           await fs.rm(tmpDir, { recursive: true, force: true })
         } catch {}
-        return NextResponse.json({ error: "SVG preview failed", fontDebug }, { status: 500 })
+        return NextResponse.json(
+          { error: "SVG preview failed", fontDebug },
+          { status: 500 }
+        )
       }
       const pages = await Promise.all(
         list.map((f) => fs.readFile(join(tmpDir, f), "utf-8"))

@@ -106,14 +106,24 @@ function shiftTabCommand(view: EditorView) {
   return indentLess(view)
 }
 
+// Cache sync map — rebuilding on every scroll is expensive for long docs
+let cachedSyncSource = ""
+let cachedSyncMap = buildSyncMap("")
+
+function getCachedSyncMap(source: string) {
+  if (source !== cachedSyncSource) {
+    cachedSyncSource = source
+    cachedSyncMap = buildSyncMap(source)
+  }
+  return cachedSyncMap
+}
+
 function reportEditorSync(view: EditorView) {
-  const { setEditorSync } = useEditorStore.getState()
+  const { setEditorSync, editorSync } = useEditorStore.getState()
   const doc = view.state.doc
   const totalLines = doc.lines
   if (totalLines < 1) return
 
-  // Prefer the line under the viewport center so scrolling tracks content;
-  // fall back to cursor when viewport is tiny.
   const rect = view.scrollDOM.getBoundingClientRect()
   const midY = rect.top + rect.height / 2
   let pos = view.state.selection.main.head
@@ -128,9 +138,18 @@ function reportEditorSync(view: EditorView) {
   const maxScroll = Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight)
   const scrollRatio = Math.min(1, Math.max(0, scrollEl.scrollTop / maxScroll))
 
-  // Content-aware ratio: ignore #set/#import/#let that never appear in PDF
-  const map = buildSyncMap(doc.toString())
+  const map = getCachedSyncMap(doc.toString())
   const contentRatio = sourceLineToContentRatio(map, lineNum)
+
+  // Skip store updates when nothing meaningful changed (cuts re-render thrash)
+  if (
+    editorSync &&
+    editorSync.line === lineNum &&
+    Math.abs(editorSync.contentRatio - contentRatio) < 0.008 &&
+    Math.abs(editorSync.scrollRatio - scrollRatio) < 0.008
+  ) {
+    return
+  }
 
   setEditorSync({ line: lineNum, totalLines, contentRatio, scrollRatio })
 }

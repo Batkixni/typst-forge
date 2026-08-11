@@ -134,11 +134,11 @@ function EditorContent({ projectId }: { projectId: string }) {
     }
   }, [store.currentFilePath, store.projectId])
 
-  // Live preview
+  // Live preview — longer debounce to avoid compile thrash while typing
   useEffect(() => {
     if (!store.currentFilePath?.endsWith(".typ") || !store.currentContent) return
     if (compileTimeoutRef.current) clearTimeout(compileTimeoutRef.current)
-    compileTimeoutRef.current = setTimeout(() => doCompile(), 450)
+    compileTimeoutRef.current = setTimeout(() => doCompile(), 1200)
     return () => {
       if (compileTimeoutRef.current) clearTimeout(compileTimeoutRef.current)
     }
@@ -154,7 +154,7 @@ function EditorContent({ projectId }: { projectId: string }) {
     if (isBinary) return
 
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
-    autoSaveRef.current = setTimeout(() => doLocalSave(), 600)
+    autoSaveRef.current = setTimeout(() => doLocalSave(), 1000)
     return () => {
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
     }
@@ -238,10 +238,11 @@ function EditorContent({ projectId }: { projectId: string }) {
     const state = useEditorStore.getState()
     if (!state.projectId || !state.currentFilePath?.endsWith(".typ")) return
     const gen = ++compileGenRef.current
+    // Soft compiling flag — keep previous SVG visible (no full reload flash)
     state.setIsCompiling(true)
     setCompileError("")
-    setFontWarning("")
     try {
+      const alreadySaved = state.currentContent === state.originalContent
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -251,19 +252,13 @@ function EditorContent({ projectId }: { projectId: string }) {
           path: state.currentFilePath,
           content: state.currentContent,
           format: "preview",
+          skipWrite: alreadySaved,
         }),
       })
       if (gen !== compileGenRef.current) return
       if (!res.ok) {
         const err = await res.json()
-        let msg = err.error || "Compile failed"
-        if (err.fontDebug) {
-          msg += `\n\n[fonts] staged=${err.fontDebug.staged} files=${err.fontDebug.files?.length ?? 0}`
-          if (err.fontDebug.lfsPointers?.length) {
-            msg += `\nLFS pointers (not real fonts): ${err.fontDebug.lfsPointers.join(", ")}`
-          }
-        }
-        setCompileError(msg)
+        setCompileError(err.error || "Compile failed")
         return
       }
       const data = await res.json()
@@ -274,42 +269,40 @@ function EditorContent({ projectId }: { projectId: string }) {
         return
       }
       const s = useEditorStore.getState()
-      s.setPreviewPages(pages)
-      s.setPreviewType("typst")
+      // Avoid re-render if SVG content identical (common with whitespace-only edits)
+      const prev = s.previewPages
+      const same =
+        prev &&
+        prev.length === pages.length &&
+        prev.every((p, i) => p.length === pages[i].length && p === pages[i])
+      if (!same) {
+        s.setPreviewPages(pages)
+        s.setPreviewType("typst")
+      }
       if (s.previewUrl) {
         URL.revokeObjectURL(s.previewUrl)
         s.setPreviewUrl(null)
       }
 
-      // Warn when CJK text is present but no project fonts were staged
+      // Lightweight font hints (no typst fonts scan on server)
       const fd = data.fontDebug
       if (fd) {
         const hasCjk = /[\u3400-\u9FFF\uF900-\uFAFF]/.test(state.currentContent)
-        const requested = [
-          ...state.currentContent.matchAll(/font:\s*"([^"]+)"/g),
-          ...state.currentContent.matchAll(/font:\s*\(([^)]+)\)/g),
-        ]
-        const names = requested
-          .flatMap((m) => m[1].split(",").map((x: string) => x.replace(/["'\s]/g, "")))
-          .filter(Boolean)
-        const families: string[] = fd.families || []
-        const missing = names.filter(
-          (n: string) =>
-            n &&
-            !families.some((f) => f.toLowerCase() === n.toLowerCase())
-        )
+        const small = (fd.files || []).filter((f: any) => f.suspiciouslySmall)
         if (fd.lfsPointers?.length) {
           setFontWarning(
-            `Font files are Git LFS pointers (not real fonts): ${fd.lfsPointers.join(", ")}. Upload .ttf/.otf into fonts/ or pull with LFS.`
+            `Font files are Git LFS pointers: ${fd.lfsPointers.join(", ")}. Re-upload real .ttf/.otf.`
           )
         } else if (fd.staged === 0 && hasCjk) {
           setFontWarning(
-            "No font files found in this project. Chinese will show as □. Put .ttf/.otf/.ttc into fonts/ (family name must match #set text)."
+            "No font files in project. Chinese shows as □. Upload CJK fonts into fonts/."
           )
-        } else if (missing.length > 0 && hasCjk) {
+        } else if (small.length > 0 && hasCjk) {
           setFontWarning(
-            `Requested font(s) not found by Typst: ${missing.join(", ")}. Loaded ${fd.staged} file(s). Open Fonts to see available family names.`
+            `These font files look too small for full CJK (${small.map((f: any) => f.path).join(", ")} ≈ ${Math.round(small[0].size / 1024)}KB). Complete 標楷體/Noto fonts are usually several MB. Re-upload complete files, then set #set text(font: "…") to the family name shown under Fonts.`
           )
+        } else {
+          setFontWarning("")
         }
       }
     } catch (err) {

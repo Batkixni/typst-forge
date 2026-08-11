@@ -93,7 +93,7 @@ export default function PreviewPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewPages, isTypstSvg])
 
-  // Editor → preview: follow content progress, not markup-heavy line counts
+  // Editor → preview (throttled; avoid fighting user / jank)
   useEffect(() => {
     if (!scrollSyncEnabled || !editorSync || !isTypstSvg) return
     if (userScrollingPreview.current) return
@@ -111,7 +111,8 @@ export default function PreviewPanel() {
     const max = Math.max(0, el.scrollHeight - el.clientHeight)
     const target = ratio * max
 
-    if (Math.abs(el.scrollTop - target) < 12) return
+    // Larger threshold — continuous micro-scrolls felt like constant "reloading"
+    if (Math.abs(el.scrollTop - target) < 48) return
 
     el.scrollTop = target
     savedScrollRatio.current = ratio

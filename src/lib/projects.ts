@@ -427,12 +427,15 @@ export function prepareCompileFontPaths(
   }
 
   const fontPaths: string[] = []
-  // Project root — Typst recursively searches (picks up fonts/, nested dirs)
-  if (existsSync(root)) fontPaths.push(root)
+  // Dedicated font folders first (recursive). Avoid whole-project root —
+  // large repos make Typst font scan very slow on every compile.
   for (const d of getProjectFontDirs(userId, projectId)) {
     if (!fontPaths.includes(d)) fontPaths.push(d)
   }
+  // Staging has a flat copy of every font found anywhere in the project
   if (staged > 0) fontPaths.push(stagingDir)
+  // Fallback: if nothing staged and no fonts/ dir, still try project root
+  if (fontPaths.length === 0 && existsSync(root)) fontPaths.push(root)
 
   return { fontPaths, files, staged, lfsPointers }
 }
