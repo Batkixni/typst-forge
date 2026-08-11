@@ -1,180 +1,214 @@
 # Typst Forge
 
-A self-hosted, cloud-synced Typst editor with GitHub integration, auto-save, live preview, and team management.
+A self-hosted Typst editor with **local storage as the source of truth**, live SVG preview with scroll sync, and **optional** GitHub binding for manual commits.
 
-一個自託管、雲端同步的 Typst 編輯器，整合 GitHub、自動存檔、即時預覽與使用者管理。
+一個自託管的 Typst 編輯器：**本地儲存為主**、即時 SVG 預覽與滾動同步，GitHub 僅為可選附屬功能（手動 commit）。
 
 ---
 
 ## Features / 功能
 
-- **GitHub Sync** — Browse repos, edit files, commit directly to GitHub
-- **Auto-save** — Local draft (keystroke) + GitHub commit (2s debounce)
-- **Live Preview** — Auto-compile `.typ` files on every change, preview PDF in-browser
-- **Binary Preview** — View images (PNG, JPG, SVG, WebP) and PDFs inline
-- **File Management** — Create, rename, delete files and folders; upload images/fonts
-- **Font Auto-loading** — Fonts in the project's `fonts/` directory are automatically available during compilation (from both GitHub and pending uploads), with server-side caching
-- **Admin System** — First user becomes admin; toggle registration on/off; manage users
-- **Project Creation** — Create new GitHub repos with `main.typ` scaffold from within the app
-- **Mobile Responsive** — Three-panel layout adapts to single-panel + tab bar on small screens
-- **Docker Deployment** — Multi-stage Dockerfile with Typst CLI pre-installed
-- **BetterAuth** — Replaced NextAuth v5 with BetterAuth for reliable, race-condition-free OAuth handling
+- **Local storage first** — 專案存在伺服器磁碟，`~600ms` 自動存檔，**不會**自動 commit 到 Git
+- **Optional Git** — 可綁定 GitHub repo；綁定後才能手動 Commit & push / Pull
+- **Live Preview** — 編輯時自動編譯為多頁 SVG；編譯中保留舊預覽
+- **Scroll sync** — 編輯器滾動 ↔ 預覽跟隨；**點預覽可跳回原始碼**
+- **Multi-file compile** — 從專案目錄編譯，`#import` 相對路徑可用
+- **File management** — 建立／重新命名／刪除檔案與資料夾；上傳圖片／字體
+- **Fonts** — 放在專案 `fonts/` 目錄，編譯時自動載入
+- **Admin** — 首位登入者為 admin；可開關註冊
+- **Docker** — 內建 Typst CLI
+
+---
+
+## Mental model / 心智模型
+
+```
+┌─────────────────────────────────────────────┐
+│  Local disk (data/projects/…)               │  ← 真正的資料來源
+│  Auto-save on every edit                    │
+└──────────────────┬──────────────────────────┘
+                   │  optional, manual only
+                   ▼
+┌─────────────────────────────────────────────┐
+│  GitHub (bind → commit & push / pull)       │  ← 附屬遠端
+└─────────────────────────────────────────────┘
+```
+
+| 操作 | 行為 |
+|------|------|
+| 打字 | 自動寫入伺服器磁碟 |
+| Save 狀態列 | `Saved locally` = 已落盤，**不是** Git commit |
+| Bind GitHub | 只建立連結，不會自動推送 |
+| Commit & push | 手動一次推送整個本地專案 |
+| Pull | 手動從 GitHub 覆蓋同名本地檔 |
 
 ---
 
 ## Quick Start / 快速開始
 
-### Prerequisites / 前置需求
+### Prerequisites
 
 - Node.js 20+
 - npm
-- [GitHub OAuth App](https://github.com/settings/developers) with callback URL `http(s)://your-domain/api/auth/callback/github` (BetterAuth uses the same callback URL) and `repo` scope
-- [Typst CLI](https://github.com/typst/typst/releases) (v0.12+) for local development
+- [GitHub OAuth App](https://github.com/settings/developers)  
+  Callback: `http(s)://your-domain/api/auth/callback/github`，scope 需含 `repo`（僅在綁定／推送 Git 時使用）
+- [Typst CLI](https://github.com/typst/typst/releases) v0.12+（本機開發）
 
-### Local Development / 本地開發
+### Local development
 
 ```bash
-# Clone the repo
 git clone https://github.com/your-username/typst-forge
 cd typst-forge
-
-# Install dependencies
 npm install
 
-# Set up environment variables
-cp .env.example .env.local
-```
+# 建立 .env.local
+# AUTH_GITHUB_ID=...
+# AUTH_GITHUB_SECRET=...
+# BETTER_AUTH_URL=http://localhost:3000
 
-Edit `.env.local`:
-
-```env
-AUTH_GITHUB_ID=your_github_oauth_client_id
-AUTH_GITHUB_SECRET=your_github_oauth_client_secret
-BETTER_AUTH_URL=http://localhost:3000
-```
-
-```bash
-# Run dev server (with webpack flag on Windows)
 npm run dev
-
-# Open http://localhost:3000
-# First user to sign in becomes admin
+# → http://localhost:3000
+# 第一位登入者成為 admin
 ```
 
-> **Note**: On Windows, the SWC native binary may not work. The dev command uses `--webpack` to fallback to the WASM compiler automatically.
+> Windows 若 SWC 原生失敗，`npm run dev` 已使用 `--webpack`。
+
+本機資料目錄：`./data/`（已在 `.gitignore`）。
 
 ---
 
 ## Deployment / 部署
 
-### Docker (Recommended)
+### Docker Compose（建議）
 
 ```bash
-# Build and start
 docker compose up -d --build
-
-# Or with custom environment file
+# 或
 docker compose --env-file .env.production up -d --build
 ```
 
-Required environment variables:
+#### 環境變數
 
 | Variable | Description |
 |----------|-------------|
 | `AUTH_GITHUB_ID` | GitHub OAuth Client ID |
 | `AUTH_GITHUB_SECRET` | GitHub OAuth Client Secret |
-| `BETTER_AUTH_URL` | Public URL, e.g. `https://typst.example.com` |
+| `BETTER_AUTH_URL` | 公開 URL，例如 `https://typst.example.com` |
 
-The Docker volume `typst-forge-data` persists the user database (`data/db.json`) and font cache (`data/fonts-cache/`).
+#### 資料持久化（重要）
 
-### Manual / 手動部署
+所有專案與使用者資料都在容器內 **`/app/data`**。  
+**若沒有掛 volume，重建／更新容器後檔案會消失。**
 
-```bash
-npm run build
-npm start
+**方案 A — Docker named volume（預設）**
+
+```yaml
+volumes:
+  - typst-forge-data:/app/data
 ```
 
-Ensure Typst CLI is installed on the server. Set `NODE_ENV=production` and the same environment variables as above.
+**方案 B — Bind mount（VPS 建議）**
+
+方便備份、權限清楚、路徑固定：
+
+```yaml
+volumes:
+  - /var/lib/typst-forge/data:/app/data
+```
+
+主機上先建立目錄：
+
+```bash
+sudo mkdir -p /var/lib/typst-forge/data
+# 依容器內 node 使用者調整權限（常見 uid 1000）
+sudo chown -R 1000:1000 /var/lib/typst-forge/data
+```
+
+然後在 `docker-compose.yml` 註解掉 named volume、改用上面的 bind mount。
+
+#### 目錄結構
+
+```
+data/
+├── better-auth.db          # 登入 session / users
+├── db.json                 # app 設定（註冊開關等）
+└── projects/
+    └── <userId>/
+        └── <projectId>/
+            ├── .forge/meta.json   # 名稱、Git 綁定資訊
+            ├── main.typ
+            ├── fonts/
+            └── …
+```
+
+#### 備份建議
+
+```bash
+# named volume
+docker run --rm -v typst-forge_typst-forge-data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/typst-forge-backup.tgz -C /data .
+
+# bind mount
+sudo tar czf typst-forge-backup.tgz -C /var/lib/typst-forge data
+```
+
+### Manual
+
+```bash
+npm run build && npm start
+```
+
+需已安裝 Typst CLI，並掛載／保留 `./data`。
+
+---
+
+## Workflow / 使用流程
+
+1. **New Project** — 建立本地專案（自動 `main.typ`）
+2. 編輯 — 自動存檔到磁碟；右側即時預覽
+3. （可選）**Git → Bind GitHub repo** — 只連結，不推送
+4. （可選）**Commit & push…** — 自行填 commit message 後推送
+5. （可選）**Import GitHub** — 從 repo 複製到本地並綁定
+
+### 預覽與同步
+
+- 編輯器滾動／游標移動 → 預覽跟隨（可關 **Sync**）
+- **點一下預覽** → 跳到編輯器對應行（比例對應；非編譯器內部 SyncTeX span）
+- 重編譯時舊預覽不閃掉
 
 ---
 
 ## Architecture / 架構
 
 ```
-typst-editor/
-├── src/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── admin/          # User & settings management
-│   │   │   ├── auth/           # BetterAuth route handler
-│   │   │   ├── commit/         # Commit text + pending uploads to GitHub
-│   │   │   ├── compile/        # Compile .typ → PDF (with font auto-loading)
-│   │   │   ├── files/delete/   # Delete files from GitHub
-│   │   │   ├── fonts/          # List available project fonts
-│   │   │   ├── projects/       # Create GitHub repos
-│   │   │   └── upload/         # Upload files (stored temporarily on server)
-│   │   ├── editor/[...id]/     # Main editor (CodeMirror 6 + preview + file tree)
-│   │   ├── projects/           # Project listing page
-│   │   ├── admin/              # Admin dashboard
-│   │   ├── page.tsx            # Landing page (init flow for first user)
-│   │   └── layout.tsx          # Root layout with Navbar
-│   ├── components/
-│   │   ├── CodeEditor.tsx      # CodeMirror 6 with custom Typst syntax
-│   │   ├── FileTree.tsx        # File browser with CRUD + upload
-│   │   ├── PreviewPanel.tsx    # PDF/image/compiled Typst preview
-│   │   ├── ResizablePanels.tsx # Drag-to-resize panel layout
-│   │   ├── AuthGuard.tsx       # Session check wrapper
-│   │   ├── LoginButton.tsx     # GitHub OAuth login
-│   │   └── ...
-│   ├── lib/
-│   │   ├── auth.ts             # BetterAuth config (SQLite + GitHub provider + admin check)
-│   │   ├── auth-client.ts      # BetterAuth browser client
-│   │   ├── db.ts               # JSON file DB for users & settings
-│   │   ├── fonts.ts            # Font collection from GitHub + local uploads with caching
-│   │   ├── github.ts           # Octokit wrapper (file tree, content, commit, blob)
-│   │   └── utils.ts            # cn() helper
-│   ├── store/
-│   │   └── editor.ts           # Zustand store for editor state
-│   └── types/
-│       └── index.ts            # TypeScript type definitions
-├── data/                       # Persistent data (volume mount in Docker)
-│   ├── db.json                 # User database & settings
-│   ├── uploads/                # Pending file uploads
-│   └── fonts-cache/            # Cached GitHub font files
-├── Dockerfile                  # Multi-stage build with Typst CLI
-├── docker-compose.yml          # Docker Compose config
-└── .env.example                # Environment variable template
+src/
+├── app/api/
+│   ├── projects/           # 本地專案 CRUD
+│   ├── projects/[id]/git/  # bind / unbind / pull / push
+│   ├── files/              # 讀寫／建立／刪除／重新命名
+│   ├── compile/            # 從專案目錄 typst compile
+│   ├── upload/             # 上傳到本地專案
+│   ├── fonts/              # 列出 fonts/
+│   └── github/repos/       # 列出可綁定的 GitHub repos
+├── lib/projects.ts         # 磁碟專案儲存
+├── components/             # Editor, Preview, FileTree…
+└── store/editor.ts
+data/                       # 持久化（務必 volume / bind mount）
 ```
 
----
-
-## Data Flow / 資料流程
-
-### Compilation / 編譯
+### Compile
 
 ```
-Editor content → POST /api/compile → collect fonts
-  ├── Local pending uploads (data/uploads/<owner>/<repo>/fonts/)
-  └── GitHub repo fonts/ (cached to data/fonts-cache/<owner>/<repo>/)
-→ typst compile --font-path <fonts> → PDF → browser preview
+Editor buffer → PUT 本地檔（auto-save / compile 前 flush）
+→ typst compile --root <projectDir> --font-path fonts
+→ multi-page SVG JSON → 瀏覽器預覽
 ```
 
-### Auto-save / 自動存檔
+### Auto-save（不再 auto-commit）
 
 ```
-Keystroke → localStorage draft (immediate)
-         → 2s debounce → POST /api/commit → GitHub commit
-Upload file → POST /api/upload → data/uploads/
-Save button → POST /api/commit (text + uploads together) → GitHub + cleanup
-```
-
-### Auth / 驗證
-
-```
-GitHub OAuth → BetterAuth callback → check DB
-  ├── First user ever → create as admin → allow
-  ├── Existing user → allow
-  └── Registration closed → deny → redirect with error
+Keystroke → 600ms debounce → PUT /api/files → 寫入 data/projects/…
+GitHub 僅在使用者手動「Commit & push」時觸發
 ```
 
 ---
@@ -183,57 +217,39 @@ GitHub OAuth → BetterAuth callback → check DB
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/commit` | Commit file content + pending uploads to GitHub |
-| POST | `/api/compile` | Compile Typst content to PDF (with auto font loading) |
-| GET | `/api/fonts` | List available project fonts |
-| POST | `/api/upload` | Upload file (stored temporarily on server) |
-| POST | `/api/files/delete` | Delete file/folder from GitHub |
-| POST | `/api/projects` | Create new GitHub repo with `main.typ` |
-| GET | `/api/admin/users` | List all users (admin only) |
-| POST | `/api/admin/settings` | Toggle registration (admin only) |
+| GET/POST | `/api/projects` | 列出／建立本地專案 |
+| GET/PATCH/DELETE | `/api/projects/:id` | 專案 meta |
+| POST | `/api/projects/:id/git` | `bind` / `unbind` / `pull` / `import` / `push` |
+| GET/PUT/POST | `/api/files` | 檔案樹、讀取、存檔、建立 |
+| POST | `/api/files/delete` | 刪除 |
+| POST | `/api/files/rename` | 重新命名 |
+| POST | `/api/compile` | 編譯（`format: preview\|pdf\|png\|svg`） |
+| POST | `/api/upload` | 上傳到專案 |
+| GET | `/api/fonts` | 列出專案字體 |
+| GET | `/api/github/repos` | 可綁定的 GitHub repos |
 
 ---
 
-## Font Management / 字體管理
+## Fonts / 字體
 
-Place font files (`.ttf`, `.otf`, `.woff`, `.woff2`, `.pfb`, `.pfm`) in your project's `fonts/` directory on GitHub or upload them via the file tree.
+將 `.ttf` / `.otf` / `.woff` / `.woff2` 放到專案 **`fonts/`**（或用檔案樹上傳，字體檔會自動進 `fonts/`）。
 
-- **On Compile**: Fonts are automatically collected from the GitHub repo's `fonts/` directory and any pending uploads
-- **Caching**: Downloaded fonts are cached in `data/fonts-cache/` — only re-downloaded when the file changes (SHA mismatch)
-- **Listing**: Click the **Fonts** button in the editor header to see all available font family names
-- **Usage in Typst**: `#set text(font: "Font Family Name")`
+```typst
+#set text(font: "Your Font Family")
+```
 
-將字體檔（`.ttf`、`.otf`、`.woff`、`.woff2`、`.pfb`、`.pfm`）放在專案的 `fonts/` 目錄（GitHub 上）或透過檔案樹上傳。
-
-- **編譯時**：自動從 GitHub repo 的 `fonts/` 目錄與 pending uploads 收集字體
-- **快取**：下載後快取在 `data/fonts-cache/`，僅在檔案變更（SHA 不同）時重新下載
-- **查詢**：點擊編輯器 header 的 Fonts 按鈕可查看所有可用字體家族名稱
-- **Typst 中使用**：`#set text(font: "字體家族名稱")`
+Header 的 **Fonts** 可查看目前可用家族名稱。
 
 ---
 
-## Admin / 管理員
+## Tech Stack
 
-- The first user to sign in is automatically granted **admin** role
-- Access admin panel at `/admin` (shield icon button in top-right)
-- Admins can toggle user registration on/off and view the user list
-
----
-
-## Tech Stack / 技術棧
-
-- **Next.js 16** (App Router, Webpack)
-- **TypeScript**
-- **Tailwind CSS v4**
-- **CodeMirror 6** (custom Typst syntax mode)
-- **BetterAuth** (GitHub OAuth, SQLite via Kysely)
-- **Zustand** (state management)
-- **Octokit** (GitHub API)
-- **Typst CLI** (compilation)
-- **Docker** (deployment)
+- Next.js 16 · TypeScript · Tailwind CSS v4  
+- CodeMirror 6 · Zustand · BetterAuth (GitHub OAuth)  
+- Typst CLI · Docker  
 
 ---
 
-## License / 授權
+## License
 
 MIT

@@ -3,8 +3,6 @@
 import { useState, useMemo, useCallback } from "react"
 import { Search, FileText, Loader2, X, ChevronRight } from "lucide-react"
 import { useEditorStore } from "@/store/editor"
-import { authClient } from "@/lib/auth-client"
-import { getFileContent } from "@/lib/github"
 import { cn } from "@/lib/utils"
 import type { ProjectFile } from "@/types"
 
@@ -24,7 +22,10 @@ function collectFiles(files: ProjectFile[]): ProjectFile[] {
 }
 
 const TEXT_EXTS = new Set([
-  "typ", "txt", "md", "json", "toml", "yaml", "yml", "css", "scss", "html", "js", "ts", "tsx", "jsx", "py", "rs", "c", "cpp", "h", "hpp", "go", "java", "kt", "swift", "sh", "bash", "zsh", "ps1", "rb", "php", "lua", "r", "m", "mm", "sql", "graphql", "tex", "bib",
+  "typ", "txt", "md", "json", "toml", "yaml", "yml", "css", "scss", "html",
+  "js", "ts", "tsx", "jsx", "py", "rs", "c", "cpp", "h", "hpp", "go", "java",
+  "kt", "swift", "sh", "bash", "zsh", "ps1", "rb", "php", "lua", "r", "sql",
+  "tex", "bib", "svg",
 ])
 
 function isTextFile(path: string): boolean {
@@ -33,8 +34,7 @@ function isTextFile(path: string): boolean {
 }
 
 export default function CodebaseSearch() {
-  const { files, owner, repo, setCurrentFile } = useEditorStore()
-  const { data: session } = authClient.useSession()
+  const { files, projectId, setCurrentFile } = useEditorStore()
   const [query, setQuery] = useState("")
   const [searching, setSearching] = useState(false)
   const [nameResults, setNameResults] = useState<ProjectFile[]>([])
@@ -45,96 +45,117 @@ export default function CodebaseSearch() {
 
   const doSearch = useCallback(async () => {
     const q = query.trim().toLowerCase()
-    if (!q) return
+    if (!q || !projectId) return
 
     setSearching(true)
     setSearched(false)
 
-    const matchedNames = allFiles.filter((f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
+    const matchedNames = allFiles.filter(
+      (f) =>
+        f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)
+    )
     setNameResults(matchedNames)
 
-    const accessToken = (session?.session as { accessToken?: string })?.accessToken
     const contentMatches: SearchResult[] = []
+    const textFiles = allFiles.filter((f) => isTextFile(f.path))
 
-    if (accessToken && owner && repo) {
-      const textFiles = allFiles.filter((f) => isTextFile(f.path))
-      await Promise.all(
-        textFiles.map(async (f) => {
-          try {
-            const content = await getFileContent(accessToken, owner, repo, f.path)
-            const lines = content.split("\n")
-            const matches: { line: number; text: string }[] = []
-            lines.forEach((line, idx) => {
-              if (line.toLowerCase().includes(q)) {
-                matches.push({ line: idx + 1, text: line.trim() })
-              }
-            })
-            if (matches.length > 0) {
-              contentMatches.push({ path: f.path, name: f.name, matches: matches.slice(0, 3) })
+    await Promise.all(
+      textFiles.map(async (f) => {
+        try {
+          const res = await fetch(
+            `/api/files?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(f.path)}`
+          )
+          if (!res.ok) return
+          const data = await res.json()
+          const content = data.content as string
+          if (typeof content !== "string") return
+          const lines = content.split("\n")
+          const matches: { line: number; text: string }[] = []
+          lines.forEach((line, idx) => {
+            if (line.toLowerCase().includes(q)) {
+              matches.push({ line: idx + 1, text: line.trim() })
             }
-          } catch (err) {
-            // ignore binary or unreadable files
+          })
+          if (matches.length > 0) {
+            contentMatches.push({
+              path: f.path,
+              name: f.name,
+              matches: matches.slice(0, 3),
+            })
           }
-        })
-      )
-    }
+        } catch {
+          // ignore
+        }
+      })
+    )
 
     setContentResults(contentMatches)
     setSearching(false)
     setSearched(true)
-  }, [query, allFiles, owner, repo, session])
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") doSearch()
-  }
+  }, [query, allFiles, projectId])
 
   return (
-    <div className="h-full flex flex-col bg-bg-secondary">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-border-secondary">
-        <Search size={13} className="text-text-tertiary" />
-        <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">Search</span>
-      </div>
-
-      <div className="px-3 py-2 border-b border-border-secondary">
+    <div className="flex flex-col h-full">
+      <div className="p-3 border-b border-border-secondary">
         <div className="relative">
+          <Search
+            size={12}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary"
+          />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search files or code..."
-            className="w-full bg-bg-tertiary text-text-primary text-xs pl-3 pr-16 py-1.5 rounded border border-border-secondary outline-none focus:border-accent/50"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") doSearch()
+            }}
+            placeholder="Search files…"
+            className="w-full bg-bg-tertiary text-text-primary text-xs pl-8 pr-8 py-1.5 rounded border border-border-secondary outline-none focus:border-accent/50"
           />
-          <button
-            onClick={doSearch}
-            disabled={searching || !query.trim()}
-            className="absolute right-1 top-1/2 -translate-y-1/2 px-2 py-0.5 text-[10px] font-medium bg-accent text-black rounded disabled:opacity-40 hover:bg-accent-hover transition-colors"
-          >
-            {searching ? <Loader2 size={10} className="animate-spin" /> : "Go"}
-          </button>
+          {query && (
+            <button
+              onClick={() => {
+                setQuery("")
+                setSearched(false)
+                setNameResults([])
+                setContentResults([])
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
+        <button
+          onClick={doSearch}
+          disabled={searching || !query.trim()}
+          className="mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs bg-bg-elevated border border-border-secondary rounded text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors"
+        >
+          {searching ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Search size={12} />
+          )}
+          Search
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        {!searched && !searching && (
-          <div className="text-center text-xs text-text-tertiary py-8">
-            Type a query and press Enter to search
-          </div>
-        )}
-
+      <div className="flex-1 overflow-y-auto p-2 space-y-3">
         {searched && nameResults.length === 0 && contentResults.length === 0 && (
-          <div className="text-center text-xs text-text-tertiary py-8">No results</div>
+          <p className="text-xs text-text-tertiary text-center py-6">No results</p>
         )}
 
         {nameResults.length > 0 && (
-          <div className="mb-4">
-            <div className="text-[10px] uppercase tracking-wider text-text-tertiary px-2 py-1">Files</div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-text-tertiary px-2 mb-1">
+              File names
+            </p>
             {nameResults.map((f) => (
               <button
                 key={f.path}
                 onClick={() => setCurrentFile(f.path)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded text-left transition-colors"
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded text-left"
               >
-                <FileText size={12} className="text-text-tertiary shrink-0" />
+                <FileText size={12} className="text-accent shrink-0" />
                 <span className="truncate">{f.path}</span>
               </button>
             ))}
@@ -143,23 +164,29 @@ export default function CodebaseSearch() {
 
         {contentResults.length > 0 && (
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-text-tertiary px-2 py-1">Code matches</div>
+            <p className="text-[10px] uppercase tracking-wider text-text-tertiary px-2 mb-1">
+              Content
+            </p>
             {contentResults.map((r) => (
               <div key={r.path} className="mb-2">
                 <button
                   onClick={() => setCurrentFile(r.path)}
-                  className="w-full flex items-center gap-1 px-2 py-1 text-xs text-text-primary hover:bg-bg-hover rounded text-left transition-colors"
+                  className="w-full flex items-center gap-1 px-2 py-1 text-xs text-accent hover:underline text-left"
                 >
-                  <ChevronRight size={12} className="text-text-tertiary shrink-0" />
-                  <span className="truncate font-medium">{r.path}</span>
+                  <ChevronRight size={10} />
+                  {r.path}
                 </button>
                 {r.matches.map((m, i) => (
-                  <div
+                  <button
                     key={i}
-                    className="ml-5 pl-2 pr-1 py-0.5 text-[10px] text-text-tertiary border-l border-border-secondary truncate font-mono"
+                    onClick={() => setCurrentFile(r.path)}
+                    className={cn(
+                      "w-full text-left px-3 py-1 text-[11px] text-text-tertiary hover:bg-bg-hover rounded font-mono truncate"
+                    )}
                   >
-                    L{m.line}: {m.text}
-                  </div>
+                    <span className="text-text-tertiary/60 mr-2">{m.line}</span>
+                    {m.text}
+                  </button>
                 ))}
               </div>
             ))}

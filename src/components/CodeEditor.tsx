@@ -31,6 +31,7 @@ function typstLanguageSupport() {
 
 export interface CodeEditorHandle {
   insertText: (text: string) => void
+  jumpToLine: (line: number) => void
 }
 
 const typstThemeStyle = HighlightStyle.define([
@@ -104,10 +105,48 @@ function shiftTabCommand(view: EditorView) {
   return indentLess(view)
 }
 
+function reportEditorSync(view: EditorView) {
+  const { setEditorSync } = useEditorStore.getState()
+  const doc = view.state.doc
+  const totalLines = doc.lines
+  if (totalLines < 1) return
+
+  // Prefer the line under the viewport center so scrolling tracks content;
+  // fall back to cursor when viewport is tiny.
+  const rect = view.scrollDOM.getBoundingClientRect()
+  const midY = rect.top + rect.height / 2
+  let line = view.state.selection.main.head
+  try {
+    const pos = view.posAtCoords({ x: rect.left + 40, y: midY })
+    if (pos != null) line = pos
+  } catch {
+    /* ignore */
+  }
+  const lineNum = doc.lineAt(line).number
+  const scrollEl = view.scrollDOM
+  const maxScroll = Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight)
+  const scrollRatio = Math.min(1, Math.max(0, scrollEl.scrollTop / maxScroll))
+
+  setEditorSync({ line: lineNum, totalLines, scrollRatio })
+}
+
+function jumpViewToLine(view: EditorView, line: number) {
+  const doc = view.state.doc
+  const target = Math.min(Math.max(1, Math.round(line)), doc.lines)
+  const lineObj = doc.line(target)
+  view.dispatch({
+    selection: { anchor: lineObj.from },
+    effects: EditorView.scrollIntoView(lineObj.from, { y: "center" }),
+  })
+  view.focus()
+}
+
 const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, ref) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const { currentContent, setCurrentContent } = useEditorStore()
+  const { currentContent, setCurrentContent, jumpToSource, clearJumpToSource } =
+    useEditorStore()
+  const syncRafRef = useRef<number | null>(null)
 
   useImperativeHandle(ref, () => ({
     insertText: (text: string) => {
@@ -120,15 +159,45 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
       })
       view.focus()
     },
+    jumpToLine: (line: number) => {
+      const view = viewRef.current
+      if (!view) return
+      jumpViewToLine(view, line)
+    },
   }))
+
+  // Preview click → jump to source line
+  useEffect(() => {
+    if (!jumpToSource) return
+    const view = viewRef.current
+    if (!view) return
+    const total = view.state.doc.lines
+    const line =
+      jumpToSource.line > 0
+        ? jumpToSource.line
+        : 1 + Math.round(jumpToSource.ratio * Math.max(0, total - 1))
+    jumpViewToLine(view, line)
+    clearJumpToSource()
+  }, [jumpToSource, clearJumpToSource])
+
+  const scheduleSync = useCallback((view: EditorView) => {
+    if (syncRafRef.current != null) cancelAnimationFrame(syncRafRef.current)
+    syncRafRef.current = requestAnimationFrame(() => {
+      syncRafRef.current = null
+      reportEditorSync(view)
+    })
+  }, [])
 
   const onUpdate = useCallback(
     (update: import("@codemirror/view").ViewUpdate) => {
       if (update.docChanged) {
         setCurrentContent(update.state.doc.toString())
       }
+      if (update.docChanged || update.selectionSet || update.geometryChanged) {
+        scheduleSync(update.view)
+      }
     },
-    [setCurrentContent]
+    [setCurrentContent, scheduleSync]
   )
 
   useEffect(() => {
@@ -168,7 +237,17 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
     const view = new EditorView({ state: startState, parent: editorRef.current })
     viewRef.current = view
 
-    return () => { view.destroy(); viewRef.current = null }
+    // scroll events do not bubble — bind directly on the scroller
+    const onScroll = () => scheduleSync(view)
+    view.scrollDOM.addEventListener("scroll", onScroll, { passive: true })
+    scheduleSync(view)
+
+    return () => {
+      view.scrollDOM.removeEventListener("scroll", onScroll)
+      if (syncRafRef.current != null) cancelAnimationFrame(syncRafRef.current)
+      view.destroy()
+      viewRef.current = null
+    }
   }, [])
 
   useEffect(() => {

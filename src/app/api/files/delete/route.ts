@@ -1,21 +1,19 @@
-import { getServerSession, getAccessToken } from "@/lib/auth"
-import { deleteFile } from "@/lib/github"
+import { getServerSession } from "@/lib/auth"
+import { assertProjectOwned, deleteProjectPath, getUserId } from "@/lib/projects"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
-  if (!getAccessToken(session?.session)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-  const accessToken = getAccessToken(session!.session)!
+  const userId = getUserId(session)
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { path, owner, repo, message } = await req.json()
-    if (!path || !owner || !repo) {
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 })
+    const { projectId, path } = await req.json()
+    if (!projectId || !path) {
+      return NextResponse.json({ error: "projectId and path required" }, { status: 400 })
     }
-
-    await deleteFile(accessToken, owner, repo, path, message || `Delete ${path}`)
+    assertProjectOwned(userId, projectId)
+    deleteProjectPath(userId, projectId, path)
     return NextResponse.json({ ok: true })
   } catch (error: any) {
     console.error("Delete failed:", error)

@@ -23,6 +23,23 @@ export interface ProjectFile extends RepoFile {
   children?: ProjectFile[]
 }
 
+export interface GitBinding {
+  owner: string
+  repo: string
+  branch: string
+  htmlUrl?: string
+}
+
+export interface LocalProject {
+  id: string
+  name: string
+  description?: string
+  createdAt: string
+  updatedAt: string
+  entry?: string
+  git?: GitBinding | null
+}
+
 export interface EditorState {
   projectId: string | null
   files: ProjectFile[]

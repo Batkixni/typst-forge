@@ -8,7 +8,19 @@ services:
       AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
     volumes:
+      # ── Persistence (pick ONE style) ──────────────────────────────────
+      #
+      # A) Named volume (simple, managed by Docker):
       - typst-forge-data:/app/data
+      #
+      # B) Bind mount (recommended on VPS — you control the host path,
+      #    easy backups with rsync/tar, survives container recreate):
+      # - /var/lib/typst-forge/data:/app/data
+      #
+      # Without a volume, ALL projects & user DB are lost on redeploy.
+      # Projects live under: data/projects/<userId>/<projectId>/
+      # Auth DB:             data/better-auth.db
+      # ──────────────────────────────────────────────────────────────────
 
 volumes:
   typst-forge-data:

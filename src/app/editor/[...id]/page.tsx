@@ -11,6 +11,7 @@ export default async function EditorPage({
   if (!session) redirect("/")
 
   const { id } = await params
+  // Local project IDs are single UUID segments; keep catch-all for flexibility
   const projectId = id.join("/")
   return <EditorClient projectId={projectId} />
 }

@@ -11,7 +11,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Typst Forge",
-  description: "A modern web-based Typst editor with GitHub integration",
+  description: "Self-hosted Typst editor with local storage, live preview, and optional GitHub binding",
 }
 
 export default function RootLayout({

@@ -1,63 +1,80 @@
 "use client"
 
-import type { GitHubRepo } from "@/types"
-import { GitFork, Lock, Globe, Clock, FileText } from "lucide-react"
+import type { LocalProject } from "@/types"
+import { Clock, FileText, GitBranch, HardDrive, Trash2 } from "lucide-react"
 import Link from "next/link"
 
 interface ProjectCardProps {
-  repo: GitHubRepo
+  project: LocalProject
+  onDelete?: () => void
 }
 
-export default function ProjectCard({ repo }: ProjectCardProps) {
-  const timeAgo = repo.updated_at ? getTimeAgo(new Date(repo.updated_at)) : "unknown"
+export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
+  const timeAgo = project.updatedAt
+    ? getTimeAgo(new Date(project.updatedAt))
+    : "unknown"
 
   return (
-    <Link
-      href={`/editor/${repo.full_name}`}
-      className="group block p-4 rounded-xl bg-bg-secondary border border-border-primary hover:border-border-accent hover:bg-bg-tertiary transition-all duration-200 animate-slide-up"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
-            <FileText size={16} className="text-accent" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium text-text-primary truncate group-hover:text-accent transition-colors">
-              {repo.name}
-            </h3>
-            <p className="text-xs text-text-tertiary truncate">
-              {repo.full_name}
-            </p>
+    <div className="group relative p-4 rounded-xl bg-bg-secondary border border-border-primary hover:border-border-accent hover:bg-bg-tertiary transition-all duration-200 animate-slide-up">
+      <Link href={`/editor/${project.id}`} className="block">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
+              <FileText size={16} className="text-accent" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-text-primary truncate group-hover:text-accent transition-colors">
+                {project.name}
+              </h3>
+              <p className="text-xs text-text-tertiary truncate flex items-center gap-1">
+                {project.git ? (
+                  <>
+                    <GitBranch size={10} />
+                    {project.git.owner}/{project.git.repo}
+                  </>
+                ) : (
+                  <>
+                    <HardDrive size={10} />
+                    Local only
+                  </>
+                )}
+              </p>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {repo.private ? (
-            <Lock size={12} className="text-text-tertiary" />
-          ) : (
-            <Globe size={12} className="text-text-tertiary" />
-          )}
-        </div>
-      </div>
 
-      {repo.description && (
-        <p className="text-xs text-text-secondary line-clamp-2 mb-3 leading-relaxed">
-          {repo.description}
-        </p>
-      )}
+        {project.description && (
+          <p className="text-xs text-text-secondary line-clamp-2 mb-3 leading-relaxed">
+            {project.description}
+          </p>
+        )}
 
-      <div className="flex items-center gap-3 text-xs text-text-tertiary">
-        {repo.language && (
+        <div className="flex items-center gap-3 text-xs text-text-tertiary">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-accent" />
-            {repo.language}
+            Typst
           </span>
-        )}
-        <span className="flex items-center gap-1">
-          <Clock size={11} />
-          {timeAgo}
-        </span>
-      </div>
-    </Link>
+          <span className="flex items-center gap-1">
+            <Clock size={11} />
+            {timeAgo}
+          </span>
+        </div>
+      </Link>
+
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="absolute top-3 right-3 p-1.5 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-bg-hover transition-all"
+          title="Delete project"
+        >
+          <Trash2 size={13} />
+        </button>
+      )}
+    </div>
   )
 }
 

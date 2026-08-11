@@ -41,10 +41,10 @@ export default async function HomePage(props: {
         </h1>
 
         <p className="text-base sm:text-lg text-text-tertiary mb-2 max-w-md leading-relaxed">
-          Write, compile, and sync Typst documents directly to GitHub.
+          Write and compile Typst documents with local auto-save and live preview.
         </p>
         <p className="text-sm text-text-muted mb-10">
-          Private. Fast. Git-backed.
+          Private. Fast. Git optional.
         </p>
 
         {accessDenied && (
