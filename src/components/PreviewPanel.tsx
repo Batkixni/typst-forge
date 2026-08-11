@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useEditorStore } from "@/store/editor"
 import {
   Loader2,
@@ -18,6 +18,7 @@ import {
   buildSyncMap,
   contentRatioToSourceLine,
 } from "@/lib/sync-map"
+import { scopeSvgIds } from "@/lib/svg-scope"
 
 export default function PreviewPanel() {
   const {
@@ -53,6 +54,27 @@ export default function PreviewPanel() {
     ext === "pdf" ||
     ["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext || "")
 
+  /**
+   * Isolate each Typst page as its own SVG document via blob URL.
+   * Critical: avoids cross-page <symbol id> collisions that break CJK glyphs
+   * (PDF works; inlined multi-page SVG did not).
+   */
+  const pageUrls = useMemo(() => {
+    if (!previewPages?.length) return [] as string[]
+    return previewPages.map((raw, i) => {
+      // Scope ids as belt-and-suspenders when browser still parses as XML tree
+      const scoped = scopeSvgIds(raw, i + 1)
+      const blob = new Blob([scoped], { type: "image/svg+xml;charset=utf-8" })
+      return URL.createObjectURL(blob)
+    })
+  }, [previewPages])
+
+  useEffect(() => {
+    return () => {
+      for (const u of pageUrls) URL.revokeObjectURL(u)
+    }
+  }, [pageUrls])
+
   const onPreviewScroll = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
@@ -75,12 +97,10 @@ export default function PreviewPanel() {
     savedScrollRatio.current = ratio
   }, [])
 
-  // After SVG pages swap: restore reading position (or re-sync from editor)
   useEffect(() => {
     if (!isTypstSvg || !scrollRef.current) return
     requestAnimationFrame(() => {
       if (scrollSyncEnabled && editorSync && !userScrollingPreview.current) {
-        // Drive preview from content-axis ratio (not raw source lines)
         const ratio =
           typeof editorSync.contentRatio === "number"
             ? editorSync.contentRatio
@@ -93,7 +113,6 @@ export default function PreviewPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewPages, isTypstSvg])
 
-  // Editor → preview (throttled; avoid fighting user / jank)
   useEffect(() => {
     if (!scrollSyncEnabled || !editorSync || !isTypstSvg) return
     if (userScrollingPreview.current) return
@@ -111,18 +130,12 @@ export default function PreviewPanel() {
     const max = Math.max(0, el.scrollHeight - el.clientHeight)
     const target = ratio * max
 
-    // Larger threshold — continuous micro-scrolls felt like constant "reloading"
     if (Math.abs(el.scrollTop - target) < 48) return
 
     el.scrollTop = target
     savedScrollRatio.current = ratio
   }, [editorSync, scrollSyncEnabled, isTypstSvg])
 
-  /**
-   * Click preview → jump to source.
-   * Preview position is treated as content progress (what you see), then
-   * reverse-mapped onto content lines in the source (skipping #set/#import/…).
-   */
   const onPreviewClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTypstSvg || !contentRef.current || !scrollRef.current) return
@@ -199,13 +212,20 @@ export default function PreviewPanel() {
             style={{ zoom }}
             title="Click to jump to source (content-based)"
           >
-            {previewPages!.map((svg, i) => (
+            {pageUrls.map((url, i) => (
               <div
-                key={i}
-                className="bg-white shadow-lg rounded-sm overflow-hidden w-full max-w-[min(100%,720px)] [&_svg]:w-full [&_svg]:h-auto [&_svg]:block pointer-events-none"
+                key={`${i}-${url.slice(-12)}`}
+                className="bg-white shadow-lg rounded-sm overflow-hidden w-full max-w-[min(100%,720px)]"
                 data-page={i + 1}
-                dangerouslySetInnerHTML={{ __html: svg }}
-              />
+              >
+                {/* img isolates SVG document → no cross-page glyph id collisions */}
+                <img
+                  src={url}
+                  alt={`Page ${i + 1}`}
+                  className="w-full h-auto block pointer-events-none select-none"
+                  draggable={false}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -270,7 +290,7 @@ export default function PreviewPanel() {
                   )}
                   title={
                     scrollSyncEnabled
-                      ? "Sync on — preview follows content (skips #set/#import)"
+                      ? "Sync on — preview follows content"
                       : "Scroll sync off"
                   }
                 >
@@ -279,7 +299,7 @@ export default function PreviewPanel() {
                 </button>
                 <span
                   className="hidden sm:flex items-center gap-1 text-[10px] text-text-tertiary/70"
-                  title="Click preview → jump by visible content position"
+                  title="Click preview → jump to source"
                 >
                   <MousePointerClick size={11} />
                   Click → source
