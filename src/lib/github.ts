@@ -252,22 +252,83 @@ export async function renameFile(
   })
 }
 
+/**
+ * Download a file from GitHub as Buffer.
+ * Handles: empty files (.gitkeep), small files (content base64), large files (blob/download_url).
+ */
+export async function getFileBytes(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  path: string
+): Promise<Buffer> {
+  const octokit = getOctokit(accessToken)
+  const { data } = await octokit.repos.getContent({ owner, repo, path })
+  if (Array.isArray(data)) throw new Error("Not a file")
+  if (data.type !== "file") throw new Error("Not a file")
+
+  // Empty file (e.g. .gitkeep) — GitHub may omit content or return empty string
+  if (data.size === 0) return Buffer.alloc(0)
+
+  // Small files: content is base64-encoded in the response
+  if ("content" in data && data.content) {
+    return Buffer.from(String(data.content).replace(/\n/g, ""), "base64")
+  }
+
+  // Large files / no embedded content: use Git Blob API via sha
+  if (data.sha) {
+    try {
+      const { data: blob } = await octokit.git.getBlob({
+        owner,
+        repo,
+        file_sha: data.sha,
+      })
+      if (blob?.content) {
+        return Buffer.from(blob.content.replace(/\n/g, ""), "base64")
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // Raw download URL
+  if ("download_url" in data && data.download_url) {
+    const resp = await fetch(data.download_url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.raw",
+      },
+    })
+    if (resp.ok) return Buffer.from(await resp.arrayBuffer())
+  }
+
+  // Last resort: raw.githubusercontent.com style via Contents media type
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github.raw",
+        },
+      }
+    )
+    if (resp.ok) return Buffer.from(await resp.arrayBuffer())
+  } catch {
+    /* ignore */
+  }
+
+  throw new Error(`No content for ${path}`)
+}
+
 export async function getFileContent(
   accessToken: string,
   owner: string,
   repo: string,
   path: string
 ): Promise<string> {
-  const octokit = getOctokit(accessToken)
-  const { data } = await octokit.repos.getContent({
-    owner,
-    repo,
-    path,
-  })
-  if (!Array.isArray(data) && "content" in data && data.content) {
-    return decodeBase64(data.content)
-  }
-  throw new Error("Not a file")
+  const buf = await getFileBytes(accessToken, owner, repo, path)
+  return buf.toString("utf-8")
 }
 
 export async function getFileBlob(
@@ -276,19 +337,20 @@ export async function getFileBlob(
   repo: string,
   path: string
 ): Promise<Blob> {
-  const octokit = getOctokit(accessToken)
-  const { data } = await octokit.repos.getContent({ owner, repo, path })
-  if (Array.isArray(data)) throw new Error("Not a file")
-  if (!("content" in data) || !data.content) throw new Error("No content")
-  const raw = data.content.replace(/\n/g, "")
-  const binaryStr = atob(raw)
-  const bytes = new Uint8Array(binaryStr.length)
-  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
+  const buf = await getFileBytes(accessToken, owner, repo, path)
   const ext = path.split(".").pop()?.toLowerCase()
   const mime: Record<string, string> = {
-    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-    gif: "image/gif", svg: "image/svg+xml", webp: "image/webp",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    webp: "image/webp",
     pdf: "application/pdf",
+    ttf: "font/ttf",
+    otf: "font/otf",
+    woff: "font/woff",
+    woff2: "font/woff2",
   }
-  return new Blob([bytes], { type: mime[ext || ""] || "" })
+  return new Blob([new Uint8Array(buf)], { type: mime[ext || ""] || "" })
 }

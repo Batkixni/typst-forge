@@ -2,6 +2,7 @@ import { getServerSession } from "@/lib/auth"
 import {
   assertProjectOwned,
   collectLocalFonts,
+  getProjectFontDirs,
   getUserId,
   projectDir,
 } from "@/lib/projects"
@@ -14,6 +15,7 @@ import { readdir } from "fs/promises"
 
 /**
  * Compile from local project directory so multi-file #import works.
+ * Fonts: always load project `fonts/` (and variants) via --font-path.
  * Body: { projectId, entry?, format?: "preview"|"pdf"|"png"|"svg", filename? }
  * Optional content + path: write content to path before compile (for unsaved buffer).
  */
@@ -69,17 +71,32 @@ export async function POST(req: NextRequest) {
       ? join(tmpDir, "page-{n}.svg")
       : join(tmpDir, `output.${outputFormat}`)
 
-    // Fonts from project fonts/ folder
-    const fontDir = join(tmpDir, "fonts")
-    mkdirSync(fontDir)
-    collectLocalFonts(userId, projectId, fontDir)
+    // Prefer pointing Typst at the real project fonts/ dirs (recursive search).
+    // Also copy into a temp dir as a reliable fallback for nested layouts.
+    const fontFlags: string[] = []
+    const projectFontDirs = getProjectFontDirs(userId, projectId)
+    for (const dir of projectFontDirs) {
+      fontFlags.push(`--font-path "${dir}"`)
+    }
+    const stagingFonts = join(tmpDir, "fonts")
+    mkdirSync(stagingFonts, { recursive: true })
+    const copied = collectLocalFonts(userId, projectId, stagingFonts)
+    if (copied > 0 && !projectFontDirs.length) {
+      fontFlags.push(`--font-path "${stagingFonts}"`)
+    } else if (copied > 0) {
+      // staging may flatten nested names; keep both
+      fontFlags.push(`--font-path "${stagingFonts}"`)
+    }
 
-    const fontFlag = `--font-path "${fontDir}"`
     const rootFlag = `--root "${root}"`
+    const fontFlag = fontFlags.join(" ")
 
     try {
       execSync(
-        `typst compile ${rootFlag} ${fontFlag} "${entryAbs}" "${outputPath}"`,
+        `typst compile ${rootFlag} ${fontFlag} "${entryAbs}" "${outputPath}"`.replace(
+          /\s+/g,
+          " "
+        ),
         { timeout: 30000, stdio: "pipe" }
       )
     } catch (error: any) {
@@ -120,7 +137,11 @@ export async function POST(req: NextRequest) {
       try {
         await fs.rm(tmpDir, { recursive: true, force: true })
       } catch {}
-      return NextResponse.json({ pages })
+      return NextResponse.json({
+        pages,
+        fontDirs: projectFontDirs.map((d) => d.replace(root, "").replace(/\\/g, "/") || "/"),
+        fontsLoaded: copied,
+      })
     }
 
     let buffer: Buffer

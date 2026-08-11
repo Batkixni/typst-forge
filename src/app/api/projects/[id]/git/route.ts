@@ -9,7 +9,7 @@ import {
   writeMeta,
   writeTextFile,
 } from "@/lib/projects"
-import { getOctokit, getFileTree, getFileContent, getFileBlob } from "@/lib/github"
+import { getOctokit, getFileTree, getFileBytes } from "@/lib/github"
 import { NextRequest, NextResponse } from "next/server"
 import type { ProjectFile } from "@/types"
 
@@ -150,7 +150,8 @@ async function materializeTree(
   repo: string
 ) {
   const TEXT_EXT = new Set([
-    "typ", "txt", "md", "json", "toml", "yaml", "yml", "css", "html", "js", "ts", "bib", "csv",
+    "typ", "txt", "md", "json", "toml", "yaml", "yml", "css", "html", "js", "ts",
+    "tsx", "jsx", "bib", "csv", "svg", "gitignore", "editorconfig",
   ])
 
   async function walk(nodes: ProjectFile[]) {
@@ -158,29 +159,22 @@ async function materializeTree(
       if (node.type === "dir" && node.children) {
         await walk(node.children)
       } else if (node.type === "file") {
-        const ext = node.name.split(".").pop()?.toLowerCase() || ""
-        if (TEXT_EXT.has(ext) || !ext) {
-          try {
-            const content = await getFileContent(accessToken, owner, repo, node.path)
-            writeTextFile(userId, projectId, node.path, content)
-          } catch (err) {
-            // Binary fallback
-            try {
-              const blob = await getFileBlob(accessToken, owner, repo, node.path)
-              const buf = Buffer.from(await blob.arrayBuffer())
-              writeBinaryFile(userId, projectId, node.path, buf)
-            } catch (e) {
-              console.warn("Skip file", node.path, e)
-            }
-          }
-        } else {
-          try {
-            const blob = await getFileBlob(accessToken, owner, repo, node.path)
-            const buf = Buffer.from(await blob.arrayBuffer())
+        try {
+          const buf = await getFileBytes(accessToken, owner, repo, node.path)
+          const ext = node.name.includes(".")
+            ? node.name.split(".").pop()!.toLowerCase()
+            : ""
+          const asText =
+            TEXT_EXT.has(ext) ||
+            node.name === ".gitkeep" ||
+            node.name.startsWith(".")
+          if (asText) {
+            writeTextFile(userId, projectId, node.path, buf.toString("utf-8"))
+          } else {
             writeBinaryFile(userId, projectId, node.path, buf)
-          } catch (e) {
-            console.warn("Skip binary", node.path, e)
           }
+        } catch (e) {
+          console.warn("Skip file", node.path, e)
         }
       }
     }

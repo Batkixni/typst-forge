@@ -5,10 +5,12 @@ import type { GitBinding, LocalProject, ProjectFile } from "@/types"
 
 export type PreviewType = "typst" | "pdf" | "image" | "none"
 
-/** Editor→preview scroll-sync payload (line + scroll ratio 0–1). */
+/** Editor→preview scroll-sync payload (content-aware). */
 export interface EditorSyncPos {
   line: number
   totalLines: number
+  /** 0–1 along content lines only (skips #set/#import/…) */
+  contentRatio: number
   scrollRatio: number
   seq: number
 }
@@ -16,6 +18,7 @@ export interface EditorSyncPos {
 /** Preview→editor jump request */
 export interface JumpToSource {
   line: number
+  /** 0–1 progress in the preview document (visual) */
   ratio: number
   seq: number
 }
@@ -106,7 +109,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setScrollSyncEnabled: (v) => set({ scrollSyncEnabled: v }),
   setEditorSync: (pos) =>
     set((s) => ({
-      editorSync: { ...pos, seq: (s.editorSync?.seq ?? 0) + 1 },
+      editorSync: {
+        ...pos,
+        contentRatio: pos.contentRatio ?? 0,
+        seq: (s.editorSync?.seq ?? 0) + 1,
+      },
     })),
   requestJumpToSource: (line, ratio) =>
     set((s) => ({

@@ -14,6 +14,10 @@ import {
   MousePointerClick,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  buildSyncMap,
+  contentRatioToSourceLine,
+} from "@/lib/sync-map"
 
 export default function PreviewPanel() {
   const {
@@ -22,6 +26,7 @@ export default function PreviewPanel() {
     previewType,
     isCompiling,
     currentFilePath,
+    currentContent,
     editorSync,
     scrollSyncEnabled,
     setScrollSyncEnabled,
@@ -75,11 +80,11 @@ export default function PreviewPanel() {
     if (!isTypstSvg || !scrollRef.current) return
     requestAnimationFrame(() => {
       if (scrollSyncEnabled && editorSync && !userScrollingPreview.current) {
-        const lineRatio =
-          editorSync.totalLines > 1
-            ? (editorSync.line - 1) / (editorSync.totalLines - 1)
-            : 0
-        const ratio = lineRatio * 0.75 + editorSync.scrollRatio * 0.25
+        // Drive preview from content-axis ratio (not raw source lines)
+        const ratio =
+          typeof editorSync.contentRatio === "number"
+            ? editorSync.contentRatio
+            : editorSync.scrollRatio
         applyPreviewRatio(ratio)
       } else {
         applyPreviewRatio(savedScrollRatio.current)
@@ -88,7 +93,7 @@ export default function PreviewPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewPages, isTypstSvg])
 
-  // Editor → preview scroll sync
+  // Editor → preview: follow content progress, not markup-heavy line counts
   useEffect(() => {
     if (!scrollSyncEnabled || !editorSync || !isTypstSvg) return
     if (userScrollingPreview.current) return
@@ -99,11 +104,10 @@ export default function PreviewPanel() {
     const el = scrollRef.current
     if (!el) return
 
-    const lineRatio =
-      editorSync.totalLines > 1
-        ? (editorSync.line - 1) / (editorSync.totalLines - 1)
-        : 0
-    const ratio = lineRatio * 0.75 + editorSync.scrollRatio * 0.25
+    const ratio =
+      typeof editorSync.contentRatio === "number"
+        ? editorSync.contentRatio
+        : editorSync.scrollRatio
     const max = Math.max(0, el.scrollHeight - el.clientHeight)
     const target = ratio * max
 
@@ -113,22 +117,24 @@ export default function PreviewPanel() {
     savedScrollRatio.current = ratio
   }, [editorSync, scrollSyncEnabled, isTypstSvg])
 
-  /** Click preview → jump to corresponding source line (inverse mapping) */
+  /**
+   * Click preview → jump to source.
+   * Preview position is treated as content progress (what you see), then
+   * reverse-mapped onto content lines in the source (skipping #set/#import/…).
+   */
   const onPreviewClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTypstSvg || !contentRef.current || !scrollRef.current) return
-      // Ignore pure drag-scrolls: only treat as jump if little movement (handled by click)
 
       const content = contentRef.current
       const rect = content.getBoundingClientRect()
       const y = e.clientY - rect.top
-      const height = content.offsetHeight || 1
-      const ratio = Math.min(1, Math.max(0, y / height))
+      const height = Math.max(1, content.offsetHeight)
+      const visualRatio = Math.min(1, Math.max(0, y / height))
 
-      const totalLines = editorSync?.totalLines || 1
-      const line = 1 + Math.round(ratio * Math.max(0, totalLines - 1))
+      const map = buildSyncMap(currentContent || "")
+      const line = contentRatioToSourceLine(map, visualRatio)
 
-      // Pause editor→preview follow briefly so jump doesn't bounce back
       suppressSyncUntil.current = Date.now() + 800
       userScrollingPreview.current = true
       if (userScrollTimer.current) clearTimeout(userScrollTimer.current)
@@ -136,9 +142,9 @@ export default function PreviewPanel() {
         userScrollingPreview.current = false
       }, 800)
 
-      requestJumpToSource(line, ratio)
+      requestJumpToSource(line, visualRatio)
     },
-    [isTypstSvg, editorSync?.totalLines, requestJumpToSource]
+    [isTypstSvg, currentContent, requestJumpToSource]
   )
 
   return (
@@ -190,7 +196,7 @@ export default function PreviewPanel() {
             onClick={onPreviewClick}
             className="flex flex-col items-center py-4 gap-4 min-h-full origin-top cursor-pointer"
             style={{ zoom }}
-            title="Click to jump to source"
+            title="Click to jump to source (content-based)"
           >
             {previewPages!.map((svg, i) => (
               <div
@@ -263,7 +269,7 @@ export default function PreviewPanel() {
                   )}
                   title={
                     scrollSyncEnabled
-                      ? "Scroll sync on — preview follows editor"
+                      ? "Sync on — preview follows content (skips #set/#import)"
                       : "Scroll sync off"
                   }
                 >
@@ -272,7 +278,7 @@ export default function PreviewPanel() {
                 </button>
                 <span
                   className="hidden sm:flex items-center gap-1 text-[10px] text-text-tertiary/70"
-                  title="Click anywhere in the preview to jump to the matching source line"
+                  title="Click preview → jump by visible content position"
                 >
                   <MousePointerClick size={11} />
                   Click → source

@@ -11,6 +11,7 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
 import { tags } from "@lezer/highlight"
 import { TypstParser, typstHighlight } from "codemirror-lang-typst"
 import { typstAutocomplete } from "@/lib/typst-autocomplete"
+import { buildSyncMap, sourceLineToContentRatio, contentRatioToSourceLine } from "@/lib/sync-map"
 
 const typstLanguageData = defineLanguageFacet({ commentTokens: { block: { open: "/*", close: "*/" } } })
 
@@ -115,19 +116,23 @@ function reportEditorSync(view: EditorView) {
   // fall back to cursor when viewport is tiny.
   const rect = view.scrollDOM.getBoundingClientRect()
   const midY = rect.top + rect.height / 2
-  let line = view.state.selection.main.head
+  let pos = view.state.selection.main.head
   try {
-    const pos = view.posAtCoords({ x: rect.left + 40, y: midY })
-    if (pos != null) line = pos
+    const at = view.posAtCoords({ x: rect.left + 40, y: midY })
+    if (at != null) pos = at
   } catch {
     /* ignore */
   }
-  const lineNum = doc.lineAt(line).number
+  const lineNum = doc.lineAt(pos).number
   const scrollEl = view.scrollDOM
   const maxScroll = Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight)
   const scrollRatio = Math.min(1, Math.max(0, scrollEl.scrollTop / maxScroll))
 
-  setEditorSync({ line: lineNum, totalLines, scrollRatio })
+  // Content-aware ratio: ignore #set/#import/#let that never appear in PDF
+  const map = buildSyncMap(doc.toString())
+  const contentRatio = sourceLineToContentRatio(map, lineNum)
+
+  setEditorSync({ line: lineNum, totalLines, contentRatio, scrollRatio })
 }
 
 function jumpViewToLine(view: EditorView, line: number) {
@@ -166,16 +171,16 @@ const CodeEditor = forwardRef<CodeEditorHandle, {}>(function CodeEditor(_props, 
     },
   }))
 
-  // Preview click → jump to source line
+  // Preview click → jump to source (content-axis, not raw line ratio)
   useEffect(() => {
     if (!jumpToSource) return
     const view = viewRef.current
     if (!view) return
-    const total = view.state.doc.lines
+    const map = buildSyncMap(view.state.doc.toString())
     const line =
       jumpToSource.line > 0
         ? jumpToSource.line
-        : 1 + Math.round(jumpToSource.ratio * Math.max(0, total - 1))
+        : contentRatioToSourceLine(map, jumpToSource.ratio)
     jumpViewToLine(view, line)
     clearJumpToSource()
   }, [jumpToSource, clearJumpToSource])

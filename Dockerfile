@@ -24,12 +24,18 @@ RUN wget -qO- https://github.com/typst/typst/releases/download/v0.13.1/typst-x86
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
-COPY --from=builder /app/.next ./.next
+# Standalone output already includes traced dependencies
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/next.config.ts ./
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Ensure wasm assets are present if emitted outside standalone trace
+COPY --from=builder /app/.next/server ./.next/server
+
+RUN mkdir -p /app/data
 
 EXPOSE 3000
-CMD ["node", "node_modules/next/dist/bin/next", "start"]
+CMD ["node", "server.js"]
